@@ -15,17 +15,22 @@ from shapely.geometry.polygon import Polygon
 from shapely import affinity
 from configobj import ConfigObj
 
+def get_config_object(name):
+    config = ConfigObj(name)
+    if config == {}:
+        config = ConfigObj("../" + name)
+    return config
 
-config = ConfigObj('config.cfg')
+config = get_config_object('config.cfg')
 
 # config = configparser.ConfigParser(comment_prefixes='#', allow_no_value=True)
 # config.read('config.cfg')
 
 config_reads = 0
-
+ppm = 70
 
 def convert_to_mks(x, y=None):
-    ppm = get_config("running","PPM")
+    global ppm
     if not y is None:
         return x / ppm, y / ppm
     else:
@@ -33,7 +38,7 @@ def convert_to_mks(x, y=None):
 
 
 def convert_from_mks(x, y=None):
-    ppm = get_config("running", "PPM")
+    global ppm
     if not y is None:
         return x * ppm, y * ppm
     else:
@@ -55,11 +60,9 @@ def check_contains_all(block_list, shape):
     square = Polygon(shape)
 
     # check if you are allowed to select the floor
-    del_floor = get_config("draw", "allow_select_delete_floor")
-    if del_floor is True:
-        blocks = block_list
-    else:
-        blocks = [bl for bl in block_list]
+
+
+    blocks = block_list
 
     for bl in blocks:
         poly = get_poly_from_ob(bl)
@@ -87,43 +90,42 @@ def read_pickle(file):
     return dill.load(f)
 
 
-def get_rand_val(main, sub):
-    if sub + "_min" in config[main]:
-        min = get_config(main, sub + "_min")
-        max = get_config(main, sub + "_max")
-        scale = get_config(main, sub + "_scale")
-        if min != max:
-            return random.randint(min, max) / scale
-        else:
-            return min / scale
-    else:
-        return get_config(main, sub)
-
-
 def set_config(main, sub, val):
     config[main][sub] = str(val)
     config.write()
 
-
-def get_config(main, sub):
+def get_config(main, sub, configIn=None):
     global config_reads
-    global config
+    if configIn is None:
+        global config
+    else:
+        config = configIn
 
     if config_reads > 200:
-        config = ConfigObj('config.cfg')
+        config = get_config_object('config.cfg')
+
         # config.read('config.cfg')
         config_reads = 0
     else:
         config_reads += 1
 
     if not main in config and not sub in config[main]:
-        config = ConfigObj('config_defaults.cfg')
+        config = get_config_object('config_defaults.cfg')
 
     val = config[main][sub]
 
     if type(val) == list:
+
         joined = "".join(val)
-        if "(" in joined:
+        joined_dic = ",".join(val)
+        if ":" in joined_dic:
+            joined_dic = joined_dic.replace("{","").replace("}","")
+            dic = {}
+            for val in joined_dic.split(","):
+                k, v = val.split(":")
+                dic[k] = True if v.lower() == "true" else False
+            return dic
+        elif "(" in joined:
             val = [x.replace("(", "").replace(")", "") for x in val]
             try:
                 return tuple([float(x) if "." in str(x) else int(x) for x in val])
@@ -142,7 +144,10 @@ def get_config(main, sub):
         return True if val.lower() == "true" else False
 
     elif "." in val:
-        return float(val)
+        try:
+            return float(val)
+        except ValueError:
+            return val
 
     else:
         try:

@@ -1,11 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-from draw_functions import *
-from functions import (get_config, set_config)
-from keyboardmouse import action_key_press
+from keyboardmouse import *
 from objects import load
-
 
 def add(event, x, y, flags, param):
     global draw
@@ -35,12 +32,18 @@ def add(event, x, y, flags, param):
             elif msg.message == "Rope Joint":
                 draw, phys = rope(draw, phys, event, x, y, cur_key)
             elif msg.message == "Weld Joint":
-                raw, phys = weld(draw, phys, event, x, y, cur_key)
+                try:
+                    draw, phys = weld(draw, phys, event, x, y, cur_key)
+                except AssertionError:
+                    draw.reset()
+                    print("Weld Selection Error")
 
         elif cur_key[1:] == SelectType.line_join.value:
             if msg.message == "Chain":
                 draw, phys = chain(draw, phys, event, x, y, cur_key)
-            elif msg.message == "Rotation Joint":
+
+        elif cur_key[1:] == SelectType.rotation_select.value:
+            if msg.message == "Rotation Joint":
                 draw, phys = rotation(draw, phys, event, x, y, cur_key)
 
         elif cur_key[1:] == SelectType.circle.value:
@@ -55,6 +58,19 @@ def add(event, x, y, flags, param):
 
         draw, phys = remove_joints(draw, phys, event, x, y, cur_key)
 
+    elif cur_key[0] == "k":
+        """
+        Used to create Forces sensors
+        """
+        draw, phys = draw_sensor(draw, phys, event, x, y, cur_key, ty="forcer")
+
+
+    elif cur_key[0] == "l":
+        """
+        Used to create Splitter sensors
+        """
+        draw, phys = draw_sensor(draw, phys, event, x, y, cur_key, ty="splitter")
+
     elif cur_key[0] == "/":
         """
         Used to create booster sensors
@@ -63,7 +79,7 @@ def add(event, x, y, flags, param):
 
     elif cur_key[0] == "'":
         """
-        Used to create booster sensors
+        Used to create Goal sensors
         """
         draw, phys = draw_sensor(draw, phys, event, x, y, cur_key, ty="goal")
 
@@ -147,77 +163,76 @@ def add(event, x, y, flags, param):
         """
         draw, phys = draw_ground(draw, phys, event, x, y, cur_key)
 
+if __name__ == "__main__":
+
+    timer, phys, draw, board, msg = load_gui(persistant=True)
+    # init the physics engine, board, and timer.
 
 
-# init the physics engine, board, and timer.
-timer, phys, board, draw, msg, = load(get_config("screen", "fps"), get_config("physics", "gravity"))
+    cur_key = ""
+    loops = 0
 
-cur_key = ""
-loops = 0
-
-# set window name and mouse callback for mouse events
-cv2.namedWindow("Board")
-cv2.setMouseCallback("Board", add)
+    # set window name and mouse callback for mouse events
+    cv2.namedWindow("Board")
+    cv2.setMouseCallback("Board", add)
 
 
 
-# start loop
-run = True
-while run:
+    # start loop
+    run = True
 
-    # get key press
-    key = cv2.waitKey(1) & 0xFF
+    while run:
 
-    # deal with keypress OR spawn per config file
-    cur_key,draw,phys,msg,timer,board = action_key_press(key,cur_key,draw,phys,msg,timer,board)
+        # get key press
+        key = cv2.waitKey(1) & 0xFF
 
-    # check if any blocks need to break
-    # check_fract_and_impulse()
+        # deal with keypress OR spawn per config file
+        cur_key,draw,phys,msg,timer,board = action_key_press(key,cur_key,draw,phys,msg,timer,board)
 
-    # draw physics
-    board_show = phys.draw_blocks(board.board.copy())
+        # check if any blocks need to break
+        # check_fract_and_impulse()
 
-    # draw front of board
-    board_show = board.draw_front(board_show)
+        # draw physics
+        board_show = phys.draw_blocks(board.board.copy())
 
-    # draw ground
-    board_show = phys.draw_blocks(board_show, ground_only=True, ground=get_config("draw", "draw_ground_blocks"))
+        # draw front of board
+        board_show = board.draw_front(board_show)
 
-    # draw joints
-    board_show = phys.draw_joints(board_show)
+        # draw joints
+        board_show = phys.draw_joints(board_show)
 
-    # write lines for drawing
-    board_show = draw.draw_point(board_show)
+        # write lines for drawing
+        board_show = draw.draw_point(board_show)
 
-    # write message if needed
-    board_show = msg.draw_message(board_show, (not draw.pause is True) and (phys.pause is False))
+        # write message if needed
+        board_show = msg.draw_message(board_show, (not draw.pause is True) and (phys.pause is False))
 
-    # show board
-    cv2.imshow("Board", board_show[:, :, ::-1])
+        # show board
+        cv2.imshow("Board", board_show[:, :, ::-1])
 
-    # timer log - this handles FPS
-    timer.log()
+        # timer log - this handles FPS
+        timer.log()
 
-    # increment loops for additional players
-    loops += 1
+        # increment loops for additional players
+        loops += 1
 
-    # step the physics engine if draw needed
-    if (not draw.pause is True) and (phys.pause is False):
+        # step the physics engine if draw needed
+        if (not draw.pause is True) and (phys.pause is False):
 
-        # create player if needed
-        if loops > get_config("running", "spawn_every"):
-            phys.create_block()
+            # create player if needed
+            if loops > phys.options["blocks"]["spawn_every"]:
+                phys.create_block()
+                loops = 0
+            # check players off screen to kill (otherwise they would continue to be calculated off screen wasting CPU) or if they have reached the goal
+            goal_hits = phys.check_off(board_show)
+            msg.goal_hits += goal_hits
 
-        # check players off screen to kill (otherwise they would continue to be calculated off screen wasting CPU) or if they have reached the goal
-        goal_hits = phys.check_off(board_show)
-        msg.goal_hits += goal_hits
-
-        #step the physics engine
-        phys.world.Step(0.025, 6, 6)
-        phys.world.ClearForces()
+            #step the physics engine
+            phys.world.Step(0.025, 6, 6)
+            phys.world.ClearForces()
 
 
-    #this applies impulses gathered from any booster sensors.
-    phys.apply_impulses()
+        #this applies impulses gathered from any booster sensors.
+        phys.check_sensor_actions()
 
-cv2.destroyAllWindows()
+    cv2.destroyAllWindows()

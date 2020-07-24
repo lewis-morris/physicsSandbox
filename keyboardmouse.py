@@ -1,6 +1,7 @@
 from draw_functions import SelectType
 from functions import get_config, set_config
-from objects import Messenger, load, pickle, load_state
+from gui import save_gui, load_gui, load_options
+from objects import Messenger, load, pickler
 
 
 def action_key_press(key,cur_key,draw,phys,msg,timer,board):
@@ -11,7 +12,7 @@ def action_key_press(key,cur_key,draw,phys,msg,timer,board):
     """
 
 
-    if key == None:
+    if key == 255:
         pass
 
     elif key == ord("r"):
@@ -110,6 +111,17 @@ def action_key_press(key,cur_key,draw,phys,msg,timer,board):
         blocks = [bl for bl in phys.block_list if not bl.static is True]
         phys.fractal_block(blocks, create=False)
 
+    elif key == ord("k"):
+        # draw splitter sensor
+        draw.reset()
+        options = {"Forcer Poly":SelectType.draw, "Forcer Rectangle":SelectType.rectangle, "Forcer Circle":SelectType.circle}
+        cur_key = msg.auto_set(options, key)
+
+    elif key == ord("l"):
+        # draw splitter sensor
+        draw.reset()
+        options = {"Splitter Poly":SelectType.draw, "Splitter Rectangle":SelectType.rectangle, "Splitter Circle":SelectType.circle}
+        cur_key = msg.auto_set(options, key)
 
     elif key == ord("/"):
         # draw booster sensor
@@ -123,6 +135,24 @@ def action_key_press(key,cur_key,draw,phys,msg,timer,board):
         options = {"Goal Poly":SelectType.draw, "Goal Rectangle":SelectType.rectangle, "Goal Circle":SelectType.circle}
         cur_key = msg.auto_set(options, key)
 
+    elif key == ord("0"):
+        # pause physics
+        phys.draw_objects["ground"] = not phys.draw_objects["ground"]
+        msg.set_message("Draw Ground" + (" On" if phys.draw_objects["ground"] is True else " Off"))
+        cur_key = "0"
+
+    elif key == ord("9"):
+        # pause physics
+        phys.draw_objects["blocks"] = not phys.draw_objects["blocks"]
+        msg.set_message("Draw Blocks" + (" On" if phys.draw_objects["blocks"] is True else " Off"))
+        cur_key = "0"
+
+    elif key == ord("8"):
+        # pause physics
+        phys.draw_objects["sensor"] = not phys.draw_objects["sensor"]
+        msg.set_message("Draw Sensors" + (" On" if phys.draw_objects["sensor"] is True else " Off"))
+        cur_key = "0"
+
     elif key == ord("o"):
         # pause physics
         phys.pause = not phys.pause
@@ -131,23 +161,26 @@ def action_key_press(key,cur_key,draw,phys,msg,timer,board):
 
     elif key == ord("*"):
         # PICKLE BOARD
-        pickle()
-        msg.set_message("State Saved")
-        cur_key = "*"
-        draw.reset()
+        name = save_gui()
+        if not name == "":
+            pickler(timer,phys,draw, board,msg, name)
+            msg.set_message("State Saved")
+            cur_key = "*"
+            draw.reset()
 
     elif key == ord("-"):
         # LOAD BOARD
-        load_state()
-        msg.set_message("State Loaded")
-        cur_key = "-"
-        draw.reset()
+        timer, phys, draw, board, msg = load_gui(persistant=False)
+    elif key == ord("5"):
+
+       load_options()
+       phys.change_config()
 
     elif key == ord("j"):
         # draw joints
         draw.reset()
         options = {"Distance Joint": SelectType.straight_join,"Rope Joint": SelectType.straight_join,"Chain": SelectType.line_join
-                   ,"Weld Joint": SelectType.straight_join,"Wheel Joint": SelectType.circle,"Rotation Joint": SelectType.line_join}
+                   ,"Weld Joint": SelectType.straight_join,"Wheel Joint": SelectType.circle,"Rotation Joint": SelectType.rotation_select}
         cur_key = msg.auto_set(options, key)
 
     return cur_key,draw,phys,msg,timer,board
@@ -181,7 +214,7 @@ def rotation(draw, phys, event, x, y, type):
         if ans == True:
             phys.create_rotation_joint(draw.player_list[0], draw.player_list[1], draw.locations[-1])
             draw.reset()
-
+    return draw, phys
 
 def fire(draw, phys, event, x, y, type):
     if type[1:] == SelectType.vector_direction.value:
@@ -406,71 +439,6 @@ def draw_ground(draw, phys, event, x, y, type):
             draw.reset()
     return draw, phys
 
-
-def draw_sensor(draw, phys, event, x, y, type, ty):
-    upstage = False
-    if type[1:] == SelectType.draw.value and draw.stage == 0:
-        # If polygon draw
-        draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
-        if ans is True:
-            conts = cv2.convexHull(np.array(draw.locations))
-            poly = Polygon(conts.squeeze())
-            coords = poly.exterior.coords
-            cen = poly.centroid
-            coords = [(int(co[0] - cen.x), int(co[1] - cen.y)) for co in coords]
-            phys.create_block(pos=(cen.x, cen.y), poly_type=-1, shape=coords)
-            upstage = True
-
-
-    elif type[1:] == SelectType.rectangle.value and draw.stage == 0:
-        # if rectangle draw
-        draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
-        if ans is True:
-            phys.create_block(pos=(0, 0),
-                              shape=(draw.locations[0], draw.locations[-1]),
-                              poly_type=-1,
-                              static=False,
-                              sq_points=True
-                              )
-            upstage = True
-    elif type[1:] == SelectType.circle.value and draw.stage == 0:
-        # if circle draw
-        draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
-        if ans is True:
-            phys.create_block(pos=(draw.locations[0]),
-                              shape=int(draw.wheel_size),
-                              size=int(draw.wheel_size),
-                              poly_type=-2,
-                              static=False
-                              )
-            upstage = True
-
-    if upstage is True:
-        draw.reset()
-        block = phys.block_list[-1]
-        for fix in block.body.fixtures:
-            fix.sensor = True
-        block.colour = (66, 218, 245)
-        block.draw_me = True
-        draw.stage += 1
-
-        draw.locations = []
-        cenX = int(get_poly_from_ob(block).centroid.x)
-        cenY = int(get_poly_from_ob(block).centroid.y)
-        draw.log_point(cenX, cenY, "fire")
-        if ty == "goal":
-            phys.block_list[-1].goal = True
-            draw.reset()
-
-    if draw.stage == 1:
-        draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y,
-                                                      type[0] + str(SelectType.vector_direction.value), False)
-        if ans == True:
-            phys.block_list[-1].booster = draw.vector
-            draw.reset()
-
-
-    return draw, phys
 
 
 def draw_shape(draw, phys, event, x, y, type):
@@ -986,7 +954,7 @@ class SelectType(Enum):
 
 
 def rotation(draw, phys, event, x, y, type):
-    if type[1:] == SelectType.line_join.value:
+    if type[1:] == SelectType.rotation_select.value:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
                                                       allow_clicked=False, log_clicked=False,
                                                       allow_multiple=True)
@@ -994,6 +962,7 @@ def rotation(draw, phys, event, x, y, type):
             phys.create_rotation_joint(draw.player_list[0], draw.player_list[1], draw.locations[-1])
             draw.reset()
 
+    return draw, phys
 
 def fire(draw, phys, event, x, y, type):
     if type[1:] == SelectType.vector_direction.value:
@@ -1272,16 +1241,27 @@ def draw_sensor(draw, phys, event, x, y, type, ty):
         draw.log_point(cenX, cenY, "fire")
         if ty == "goal":
             phys.block_list[-1].goal = True
+            phys.block_list[-1].colour = (169, 252, 179)
+            draw.reset()
+        elif ty == "splitter":
+            phys.block_list[-1].splitter = True
+            phys.block_list[-1].colour = (162, 239, 242)
             draw.reset()
 
     if draw.stage == 1:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y,
                                                       type[0] + str(SelectType.vector_direction.value), False)
         if ans == True:
-            phys.block_list[-1].booster = draw.vector
+            if ty == "booster":
+                phys.block_list[-1].booster = draw.vector
+                phys.block_list[-1].colour = (242, 222, 162)
+            elif ty == "forcer":
+                phys.block_list[-1].forcer = draw.vector
+                phys.block_list[-1].colour = (233, 162, 242)
             draw.reset()
 
     return draw, phys
+
 
 
 def draw_shape(draw, phys, event, x, y, type):
