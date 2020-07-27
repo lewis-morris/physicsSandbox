@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
+from configobj import ConfigObj
 
+from gui import update_block, get_fixtures, get_toolbar, deal_with_toolbar_event
 from keyboardmouse import *
 from objects import load
 
@@ -39,12 +41,23 @@ def add(event, x, y, flags, param):
                     print("Weld Selection Error")
 
         elif cur_key[1:] == SelectType.line_join.value:
-            if msg.message == "Chain":
-                draw, phys = chain(draw, phys, event, x, y, cur_key)
+            if msg.message == "Electric":
+                draw, phys = lightning(draw, phys, event, x, y, cur_key)
+            elif msg.message == "Springy Rope":
+                draw, phys = chainish(draw, phys, event, x, y, cur_key)
+
+        elif cur_key[1:] == SelectType.d_straight_join.value:
+            if msg.message == "Pulley":
+                draw, phys = pulley(draw, phys, event, x, y, cur_key)
 
         elif cur_key[1:] == SelectType.rotation_select.value:
             if msg.message == "Rotation Joint":
                 draw, phys = rotation(draw, phys, event, x, y, cur_key)
+
+        elif cur_key[1:] == SelectType.rotation_select.value:
+            if msg.message == "Pulley Joint":
+                draw, phys = pulley(draw, phys, event, x, y, cur_key)
+
 
         elif cur_key[1:] == SelectType.circle.value:
             if msg.message == "Wheel Joint":
@@ -62,7 +75,7 @@ def add(event, x, y, flags, param):
         """
         Used to create Forces sensors
         """
-        draw, phys = draw_sensor(draw, phys, event, x, y, cur_key, ty="forcer")
+        draw, phys = draw_sensor(draw, phys, event, x, y, cur_key, ty="pusher")
 
 
     elif cur_key[0] == "l":
@@ -75,7 +88,7 @@ def add(event, x, y, flags, param):
         """
         Used to create booster sensors
         """
-        draw, phys = draw_sensor(draw, phys, event, x, y, cur_key, ty="booster")
+        draw, phys = draw_sensor(draw, phys, event, x, y, cur_key, ty="fire")
 
     elif cur_key[0] == "'":
         """
@@ -88,41 +101,50 @@ def add(event, x, y, flags, param):
         Used to select blocks and print details (for now)
         """
         draw, phys = select_blocks(draw, phys, event, x, y, cur_key)
+        if len(draw.player_list) >= 1:
+            draw.player_list[0] = update_block(draw.player_list[0])
+            draw.reset()
 
-    elif cur_key == "v":
+    elif cur_key[0] == "4":
+        """
+        Used to select a blocks joints and print details (for now)
+        """
+        draw, phys = select_blocks(draw, phys, event, x, y, cur_key)
+        if len(draw.player_list) >= 1:
+            draw.player_list[0] = get_fixtures(draw.player_list[0],board)
+            draw.reset()
+
+    elif cur_key[0] == "v":
         """
         Used to set spawn point
         """
         if event == cv2.EVENT_LBUTTONDOWN:
             h, w, _ = board.board.shape
-            set_config("blocks_out", "start_pos_x_min", int(x / w * 100))
-            set_config("blocks_out", "start_pos_x_max", int(x / w * 100))
-            set_config("blocks_out", "start_pos_y_min", int(y / h * 100))
-            set_config("blocks_out", "start_pos_y_max", int(y / h * 100))
+            phys.options["blocks_out"]["start_pos_x_min"] = int(x / w * 100)
+            phys.options["blocks_out"]["start_pos_x_max"] = int(x / w * 100)
+            phys.options["blocks_out"]["start_pos_y_min"] = int(y / h * 100)
+            phys.options["blocks_out"]["start_pos_y_max"] = int(y / h * 100)
 
 
-    elif cur_key == "t":
+    elif cur_key[0] == "t":
         """
         Used to transform block
         """
-        if event == cv2.EVENT_LBUTTONDOWN:
+        """
+        Used to rotate blocks
+        """
 
-            draw, phys, clicked, coords = select_player(draw, phys, x, y, "trans", "select")
+        if cur_key[1:] == SelectType.player_select.value:
+            draw, phys = transform_block(draw, phys, event, x, y, cur_key)
 
 
-        elif event == cv2.EVENT_MOUSEMOVE and len(draw.locations) >= 1:
+    elif cur_key[0] == "2":
+        """
+        Used to rotate blocks
+        """
 
-            if draw.status == "select":
-                draw.log_point(x, y, "select")
-            else:
-                pass
-        elif event == cv2.EVENT_LBUTTONUP:
-
-            if draw.statuss == "select":
-                draw.log_point(x, y, "select")
-                draw, phys = get_set_selected(draw, phys, "trans")
-
-            draw.reset()
+        if cur_key[1:] == SelectType.player_select.value:
+            draw, phys = rotate_block(draw, phys, event, x, y, cur_key)
 
     elif cur_key[0] == "m":
         """
@@ -151,6 +173,13 @@ def add(event, x, y, flags, param):
         """
         draw, phys = draw_shape(draw, phys, event, x, y, cur_key)
 
+    elif cur_key[0] == "b":
+        """
+        Used to create polygons
+
+        """
+        draw, phys = draw_foreground(draw, phys, event, x, y, cur_key)
+
     elif cur_key[0] == "f":
         """
         Used to create fractals
@@ -167,7 +196,9 @@ if __name__ == "__main__":
 
     timer, phys, draw, board, msg = load_gui(persistant=True)
     # init the physics engine, board, and timer.
-
+    conf = ConfigObj("config_default.cfg")
+    conf.filename = "config.cfg"
+    conf.write()
 
     cur_key = ""
     loops = 0
@@ -176,6 +207,8 @@ if __name__ == "__main__":
     cv2.namedWindow("Board")
     cv2.setMouseCallback("Board", add)
 
+    toolbar = get_toolbar()
+
 
 
     # start loop
@@ -183,8 +216,14 @@ if __name__ == "__main__":
 
     while run:
 
+        #read toolbar
+        toolbar, key, name = deal_with_toolbar_event(toolbar)
+        #move to snap to board
+        toolbar.move(cv2.getWindowImageRect("Board")[0]+board.board.shape[1], cv2.getWindowImageRect("Board")[1]-53)
+
         # get key press
-        key = cv2.waitKey(1) & 0xFF
+        if key is None:
+            key = cv2.waitKey(1) & 0xFF
 
         # deal with keypress OR spawn per config file
         cur_key,draw,phys,msg,timer,board = action_key_press(key,cur_key,draw,phys,msg,timer,board)

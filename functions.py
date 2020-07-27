@@ -218,62 +218,6 @@ def get_clicked(bodies, x, y, shrink_cir=16):
     return block, coords
 
 
-def change_size(block, up=True):
-    body = block.body
-    fix = body.fixtures[0]
-
-    dic = {"den": fix.density,
-           "rest": fix.restitution,
-           "friction": fix.friction,
-           "radius":fix.shape.radius,
-           "shape":type(fix.shape)}
-    try:
-        poly = get_poly_from_ob(block)
-    except:
-        #only for polys
-        pass
-
-    #check if going to be too small
-    if dic["shape"] == b2CircleShape:
-        #get the size of the phys engine
-        oneMks = convert_to_mks(2)
-        new_rad = dic["radius"] + (oneMks if up else -oneMks)
-        # stops it being too small
-        if new_rad < convert_to_mks(1):
-            del fix
-            return block
-
-
-    #remove old fixture
-    del fix
-    body.DestroyFixture(body.fixtures[0])
-
-
-
-    if dic["shape"] == b2CircleShape:
-        dic["type"] = "circle"
-        new_rad = dic["radius"] + (oneMks if up else -oneMks)
-
-
-        body.CreateFixture(shape=b2CircleShape(radius=new_rad),
-                           restitution=dic["rest"], density=dic["den"], friction=dic["friction"])
-        block.radius = convert_from_mks(new_rad)
-    else:
-
-        dic["type"] = "poly"
-        if up:
-            poly_new = affinity.scale(poly,1.05,1.05)
-        else:
-            poly_new = affinity.scale(poly, .95, .95)
-
-        verts = [convert_to_mks(co[0],co[1]) for co in list(poly_new.exterior.coords)]
-
-        body.CreateFixture(b2FixtureDef(shape=b2PolygonShape(vertices=verts)), restitution=dic["rest"], density=dic["den"],
-                           friction=dic["friction"])
-
-
-    return block
-
 def calculateDistance(x1, y1, x2, y2):
     dist = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
     return dist

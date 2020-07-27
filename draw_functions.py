@@ -1,3 +1,5 @@
+from enum import Enum
+
 import cv2
 from shapely.geometry import Polygon
 
@@ -7,15 +9,15 @@ import numpy as np
 from Box2D import b2MouseJoint, b2RevoluteJoint
 
 
-from enum import Enum
 class SelectType(Enum):
+
     draw = "0"
     rectangle = "1"
     circle = "2"
     select = "3"
     line_join = "4"
     straight_join = "5"
-    rectange_and_move = "6"
+    rectangle_and_move = "6"
     circle_and_move = "7"
     vector_direction = "8"
     select_move = "9"
@@ -23,7 +25,11 @@ class SelectType(Enum):
     select_point = "11"
     distance = "12"
     length = "13"
+    player_select = "14"
+    d_straight_join = "15"
+    player_distance = "16"
     null = "-1"
+
 def rotation(draw,phys,event,x,y,type):
     if type[1:] == SelectType.line_join.value:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
@@ -165,7 +171,7 @@ def chain(draw,phys,event,x,y,type):
     if type[1:] == SelectType.line_join.value:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
         if ans is True:
-            phys.create_chain_joint(draw.player_list[0], draw.player_list[1], draw.locations)
+            phys.create_lightening_joint(draw.player_list[0], draw.player_list[1], draw.locations)
             draw.reset()
     return draw, phys
 

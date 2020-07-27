@@ -138,6 +138,27 @@ class Draw():
         elif self.status in ["distance", "weld_pos", "rotation_pos", "wheel_draw", "wheel_move", "rectangle_draw",
                              "circle_draw", "line_draw", "length"]:
             self.locations.append([x, y])
+        elif self.status in ["double_dist"] and len(self.player_list) == 1:
+
+            if len(self.locations) == 1:
+                self.locations.append([x, y])
+            else:
+                self.locations[1] = ([x, y])
+
+        elif self.status in ["rotate"] and len(self.player_list) >= 1:
+
+            if len(self.locations) == 1:
+                self.locations.append([x, y])
+            else:
+                self.locations[0] = self.locations[1]
+                self.locations[1] = ([x, y])
+
+        elif self.status in ["double_dist1"] and len(self.player_list) == 2:
+
+            if len(self.locations) < 4:
+                self.locations.append([x, y])
+            else:
+                self.locations[3] = ([x, y])
 
         elif len(self.locations) == 1 and self.status in ["fire", "delete", "trans"]:
             self.locations.append([x, y])
@@ -171,8 +192,14 @@ class Draw():
 
         if len(self.locations) == 0:
             return board
-        elif len(self.locations) == 1 and not self.status in ["wheel_draw", "wheel_move", "circle_move", "line_draw"]:
+        elif len(self.locations) == 1 and not self.status in ["wheel_draw", "wheel_move", "circle_move", "line_draw",
+                                                              "double_dist", "double_dist1"]:
             board = cv2.circle(board, tuple(self.locations[0]), 2, (240, 14, 14), -1)
+        elif self.status in ["double_dist", "double_dist1"] and 1 < len(self.locations) <= 3:
+            board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
+        elif self.status in ["double_dist1"] and len(self.locations) == 4:
+            board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
+            board = cv2.line(board, tuple(self.locations[2]), tuple(self.locations[3]), (170, 240, 7), 3)
 
         elif self.status in ["wheel_move"]:
             board = cv2.circle(board, tuple(self.locations[-1]), self.wheel_size if self.wheel_size >= 1 else 1,
@@ -183,32 +210,31 @@ class Draw():
 
         elif len(self.locations) == 2 and self.status == "fire":
             # draw line for fire
-            board = cv2.arrowedLine(board, tuple(self.locations[0]), tuple(self.locations[1]), (255, 151, 54), 3)
+            board = cv2.arrowedLine(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
             board = cv2.arrowedLine(board, tuple(self.locations[0]), tuple(self.locations[1]), (240, 14, 14), 2)
 
         elif len(self.locations) >= 2 and self.status == "distance":
-            board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (255, 151, 54), 3)
+            board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
             board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[-1]), (240, 14, 14), 2)
 
         elif len(self.locations) >= 2 and self.status == "length":
-            board = cv2.arrowedLine(board, tuple(self.locations[0]), tuple(self.locations[1]), (255, 151, 54), 3)
+            board = cv2.arrowedLine(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
             board = cv2.arrowedLine(board, tuple(self.locations[0]), tuple(self.locations[-1]), (240, 14, 14), 2)
 
         elif len(self.locations) >= 2 and (self.status in ["poly", "frag"]):
             # used for drawing the rough shape of the polygon
             for i in range(len(self.locations) - 1):
-                board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (255, 151, 54), 3)
+                #board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
                 board = cv2.line(board, tuple(self.locations[i]), tuple(self.locations[i + 1]), (240, 14, 14), 2)
         elif self.status in ["delete", "select", "rectangle_draw", "rectangle_move"]:
             board = cv2.rectangle(board, tuple([int(x) for x in self.locations[0]]),
-                                  tuple([int(x) for x in self.locations[-1]]), (255, 151, 54), 3)
-            board = cv2.rectangle(board, tuple([int(x) for x in self.locations[0]]),
-                                  tuple([int(x) for x in self.locations[-1]]), (240, 14, 14), 2)
+                                  tuple([int(x) for x in self.locations[-1]]), (170, 240, 7), 3)
+
 
         elif self.status in ["line_draw"]:
             if len(self.locations) >= 2:
                 for i in range(0, len(self.locations) - 2):
-                    board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (255, 151, 54), 3)
+                    board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
                     board = cv2.line(board, tuple(self.locations[i]), tuple(self.locations[i + 1]), (240, 50, 14), 2)
 
         return board
@@ -227,7 +253,7 @@ class Draw():
                 for i in range(len(coord)):
                     co1 = tuple([int(x) for x in coord[i]])
                     co2 = tuple([int(x) for x in coord[(i + 1) if i != len(coord) - 1 else 0]])
-                    board = cv2.line(board, co1, co2, (255, 151, 54), 3)
+                    board = cv2.line(board, co1, co2, (170, 240, 7), 3)
                     board = cv2.line(board, co1, co2, (240, 50, 14), 2)
 
         return board
@@ -238,8 +264,10 @@ class Draw():
         self.pause = False
         self.coords = []
         self.clone_created = False
+
         for bl in self.player_list:
             bl.sensor = False
+
         del self.player_list
         self.player_list = []
 
@@ -262,7 +290,7 @@ class Physics():
         self.height = None
         self.width = None
         self.block_list = []
-        self.draw_objects = {"sensor": True, "ground": True, "blocks": True}
+        self.draw_objects = {"sensor": True, "ground": True, "blocks": True, "foreground": True}
         self.pause = False
         self.options = {}
 
@@ -338,6 +366,7 @@ class Physics():
         all_joints = {}
         for i, joint in enumerate(block.body.joints):
             joints_dic = {"type": type(joint.joint)}
+            
             if hasattr(joint.joint, "anchorA"):
                 anc = joint.joint.anchorA
                 joints_dic["anchorA"] = [anc.x, anc.y]
@@ -378,7 +407,7 @@ class Physics():
                                       fixtures=b2FixtureDef(
                                           shape=b2PolygonShape(vertices=shape),
                                           density=block_info["fixtures"]["density"])),
-                          set_sprite=block_info["block"]["sprite"], draw_static=block_info["block"]["draw_static"])
+                          set_sprite=False, draw_static=block_info["block"]["draw_static"])
 
                 )
 
@@ -391,13 +420,32 @@ class Physics():
                                      fixtures=b2FixtureDef(
                                          shape=b2CircleShape(radius=rad),
                                          density=block_info["fixtures"]["density"]))
-                         , set_sprite=block_info["block"]["sprite"]))
+                         , set_sprite=False))
 
             # get current block and add settings
             block = self.block_list[-1]
+
+
+            #set block details
             for k, v in block_info["block"].items():
                 if hasattr(block, k):
                     setattr(block, k, v)
+
+            #reseize sprite
+
+            if not block.sprite is None:
+                if block_info["block"]["type"] in [-1,1,3]:
+                    block.sprite = cv2.resize(block.sprite,dsize=(int(block.width),int(block.height)))
+                    block.mask = cv2.resize(block.mask, dsize=(int(block.width), int(block.height)))
+                    block.inv_mask = cv2.resize(block.inv_mask, dsize=(int(block.width), int(block.height)))
+                else:
+                    block.sprite = cv2.resize(block.sprite, (int(block.radius * 2), int(block.radius * 2)))
+                    block.mask = cv2.resize(block.mask, (int(block.radius * 2), int(block.radius * 2)))
+                    block.inv_mask = cv2.resize(block.inv_mask, (int(block.radius * 2), int(block.radius * 2)))
+
+            # not needed any more!!
+            # if block.sprite_on and not type(block.sprite) is None:
+            #     block.set_sprite(force=True)
 
             block.id = new_id
             block.old_id = block_info["block"]["id"]
@@ -454,6 +502,8 @@ class Physics():
                         self.create_weld_joint(a, b, v["anchorA"], convert_joints)
                     else:
                         print("help")
+
+
         return new_obs
 
     def get_block_by_id(self, id):
@@ -560,7 +610,7 @@ class Physics():
             return self.options[main][sub]
 
     def create_block(self, shape=None, pos=None, rest=None, density=None, friction=None, poly_type=None,
-                     set_sprite=False, draw_static=True, size=None, static=False, draw=None, sq_points=False):
+                     set_sprite=False, draw_static=True, size=None, static=False, draw=None, sq_points=False,foreground=False):
         """
         Create the block object
 
@@ -605,7 +655,10 @@ class Physics():
             if poly_type == 2:
                 shape = int(size / 2)
             elif poly_type == 1:
-                shape = [[0, 0], [0, size], [size, size], [size, 0]]
+                size_half = int(size/2)
+                shape = [[-size_half, -size_half], [-size_half, size_half], [size_half, size_half], [size_half, -size_half]]
+
+
             elif poly_type == 3:
                 shape = [[0, 0], [0, int(size * (random.randint(50, 150) / 100))],
                          [int(size * (random.randint(50, 150) / 100)), int(size * (random.randint(50, 150) / 100))],
@@ -702,6 +755,11 @@ class Physics():
         self.block_list[-1].body.fixtures[0].density = density
         self.block_list[-1].body.fixtures[0].friction = friction
         self.block_list[-1].draw_me = draw
+
+        if foreground:
+            self.block_list[-1].foreground = True
+            self.block_list[-1].body.fixtures[0].sensor = True
+
         return True
 
     def check_sensor_actions(self):
@@ -726,17 +784,33 @@ class Physics():
         floor = [bl for bl in self.block_list if
                  bl.body.fixtures[0].sensor is False and bl.static is True]  # and not bl.force_draw is True)]
         sensor_blocks = [bl for bl in self.block_list if
-                         bl.body.fixtures[0].sensor == True and bl not in floor]  # and not bl.force_draw is True)]
+                         bl.body.fixtures[0].sensor == True and bl.foreground == False and bl not in floor]
+
+        foreground = [bl for bl in self.block_list if
+                         bl.body.fixtures[0].sensor == True and bl.foreground == True and not bl in floor and not bl in sensor_blocks]
+
+        # and not bl.force_draw is True)]
         blocks = [bl for bl in self.block_list if
-                  bl not in sensor_blocks and bl not in floor]  # and not bl.force_draw is True)]
+                  bl not in sensor_blocks and bl not in floor and not bl in foreground ]  # and not bl.force_draw is True)]
+
+
+
 
         if self.draw_objects["ground"]:
             for bl in floor:
                 board = bl.draw(board)
+        else:
+            for bl in floor:
+                if bl.force_draw:
+                    board = bl.draw(board)
 
         if self.draw_objects["sensor"]:
             for bl in sensor_blocks:
                 board = bl.draw(board)
+        else:
+            for bl in sensor_blocks:
+                if bl.force_draw:
+                    board = bl.draw(board)
                 # this was too slow
                 # board_overlay = board.copy()
                 # board_overlay = bl.draw(board)
@@ -747,6 +821,22 @@ class Physics():
             # draw blocks undernear
             for bl in blocks:
                 board = bl.draw(board)
+        else:
+            for bl in blocks:
+                if bl.force_draw:
+                    board = bl.draw(board)
+
+        if "foreground" not in self.draw_objects:
+            self.draw_objects["foreground"] = True
+
+        if self.draw_objects["foreground"]:
+            # draw blocks undernear
+            for bl in foreground:
+                board = bl.draw(board)
+        else:
+            for bl in foreground:
+                if bl.force_draw:
+                    board = bl.draw(board)
 
         return board
 
@@ -760,6 +850,17 @@ class Physics():
                     col = (150, 23, 240)
 
                 board = cv2.circle(board, tuple([int(x) for x in an]), 1, col, -1)
+            elif type(jn) == b2PulleyJoint:
+                col = (50, 214, 4)
+                startA = convert_from_mks(jn.anchorA.x, jn.anchorA.y)
+                endA = convert_from_mks(jn.groundAnchorA.x, jn.groundAnchorA.y)
+
+                startB = convert_from_mks(jn.anchorB.x, jn.anchorB.y)
+                endB = convert_from_mks(jn.groundAnchorB.x, jn.groundAnchorB.y)
+
+                board = cv2.line(board, tuple([int(x) for x in startA]), tuple([int(x) for x in endA]), col, 2)
+                board = cv2.line(board, tuple([int(x) for x in startB]), tuple([int(x) for x in endB]), col, 2)
+
             else:
                 if type(jn) == b2RopeJoint:
                     col = (23, 233, 123)
@@ -789,6 +890,10 @@ class Physics():
 
     def create_mouse_joint(self, a, x, y):
 
+        if len(self.world.bodies) < 2:
+            print("Mouse joint creation error - must have 2+ bodies created)")
+            return
+
         if self.world.bodies[0] == a.body:
             bod = self.world.bodies[1]
         else:
@@ -801,7 +906,19 @@ class Physics():
         a.body.active = True
         a.body.awake = True
 
-    def create_chain_joint(self, a, b, lines, stretchy=False):
+    def create_pulley(self, a, b, lines):
+        lines = [convert_to_mks(x[0], x[1]) for x in lines]
+        self.world.CreatePulleyJoint(bodyA=a.body,
+                                     bodyB=b.body,
+                                     groundAnchorA=lines[1],
+                                     groundAnchorB=lines[3],
+                                     anchorA=lines[0],
+                                     anchorB=lines[2],
+                                     ratio=1)
+                                     # maxLengthA=calculateDistance(lines[0][0], lines[0][1], lines[1][0], lines[1][1]),
+                                     # maxLengthB=calculateDistance(lines[2][0], lines[2][1], lines[3][0], lines[3][1]))
+
+    def create_chain(self, a, b, lines, stretchy=False):
         last_ob = 0
         end = False
 
@@ -811,14 +928,58 @@ class Physics():
         line = line.simplify(1)
         # or to get the distances closest to the desired one:
         # n = round(line.length / desired_distance_delta)
-        distances = np.linspace(0, line.length, int(line.length/3))
+        distances = np.linspace(0, line.length, int(line.length / 2))
         # or alternatively without NumPy:
         # distances = (line.length * i / (n - 1) for i in range(n))
         points = [line.interpolate(distance) for distance in distances]
         multipoint = unary_union(points)
         lines_new = [(int(p.x), int(p.y)) for p in multipoint]
 
-        #lines_new = [[int(co[0]), int(co[1])] for co in get_enlongated_line(lines)]
+        # lines_new = [[int(co[0]), int(co[1])] for co in get_enlongated_line(lines)]
+
+        for i in np.arange(0, len(lines_new) - 1, step=1):
+            pos = lines_new[i]
+            last_ob += 1
+
+            self.create_block(pos=pos, draw=True, size=3, poly_type=1, density=2, friction=0.1, rest=0)
+
+            if i == 0:
+                blockA = a.body
+            else:
+                blockA = self.block_list[-2].body
+
+            if i >= len(lines_new) - 2:
+                blockB = b.body
+                end = True
+            else:
+                blockB = self.block_list[-1].body
+
+            self.world.CreateRevoluteJoint(bodyA=blockA,
+                                           bodyB=blockB,
+                                           anchor=((blockA.worldCenter.x + blockB.worldCenter.x) / 2,
+                                                   (blockA.worldCenter.y + blockB.worldCenter.y) / 2))
+
+            if end:
+                return
+
+    def create_lightening_joint(self, a, b, lines, stretchy=False):
+        last_ob = 0
+        end = False
+
+        ###FROM STACKOVERFLOW
+        ## https://stackoverflow.com/questions/62990029/how-to-get-equally-spaced-points-on-a-line-in-shapely/62994304#62994304
+        line = LineString(lines)
+        line = line.simplify(1)
+        # or to get the distances closest to the desired one:
+        # n = round(line.length / desired_distance_delta)
+        distances = np.linspace(0, line.length, int(line.length / 3))
+        # or alternatively without NumPy:
+        # distances = (line.length * i / (n - 1) for i in range(n))
+        points = [line.interpolate(distance) for distance in distances]
+        multipoint = unary_union(points)
+        lines_new = [(int(p.x), int(p.y)) for p in multipoint]
+
+        # lines_new = [[int(co[0]), int(co[1])] for co in get_enlongated_line(lines)]
 
         for i in np.arange(0, len(lines_new) - 1, step=1):
             pos = lines_new[i]
@@ -841,16 +1002,15 @@ class Physics():
                                      blockB.worldCenter.y)
 
             self.world.CreateDistanceJoint(bodyA=blockA,
-                                        bodyB=blockB,
-                                       anchorA=blockA.worldCenter if i != 0 else convert_to_mks(lines[0][0],
-                                                                                                lines[0][1]),
-                                       anchorB=blockB.worldCenter if i != len(lines_new) -2 else convert_to_mks(
-                                           lines[-1][0], lines[-1][1]),
-                                       collideConnected=False)
-            self.world.joints[-1].frequency = 0.0000000001
-            self.world.joints[-1].frequencyHz = 0.0000000001
-            self.world.joints[-1].dampingRatio = 100000
-
+                                           bodyB=blockB,
+                                           anchorA=blockA.worldCenter if i != 0 else convert_to_mks(lines[0][0],
+                                                                                                    lines[0][1]),
+                                           anchorB=blockB.worldCenter if i != len(lines_new) - 2 else convert_to_mks(
+                                               lines[-1][0], lines[-1][1]),
+                                           collideConnected=False)
+            self.world.joints[-1].frequency = 50000
+            self.world.joints[-1].frequencyHz = 50000
+            self.world.joints[-1].dampingRatio = 0
 
             if end:
                 return
@@ -954,6 +1114,7 @@ class Ball():
         self.old_id = None
         self.force_draw = draw
 
+        self.foreground = False
         self.booster = None
         self.goal = False
         self.splitter = False
@@ -961,6 +1122,8 @@ class Ball():
 
         self.id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))
         self.sprite = sprite
+        self.mask = None
+        self.inv_mask = None
         self.sprite_on = False
         if set_sprite is True:
             self.set_sprite()
@@ -978,22 +1141,26 @@ class Ball():
                                        (self.body.transform * self.body.localCenter).y)
         self.current_position = [self.center]
 
-    def set_sprite(self):
-        try:
-            img = cv2.imread(self.sprite, -1)
-            self.sprite = cv2.resize(img, (int(self.radius * 2), int(self.radius * 2)))
-            mask = self.sprite[:, :, 3] / 255
+    def set_sprite(self, force=False):
+        if not self.sprite is None:
+            try:
 
-            self.mask = np.stack([mask, mask, mask]).transpose([1, 2, 0])
-            inv_mask = 1 - mask.copy()
-            self.inv_mask = np.stack([inv_mask, inv_mask, inv_mask]).transpose([1, 2, 0])
+                if not force:
+                    img = cv2.imread(self.sprite, -1)
+                    self.sprite = cv2.resize(img, (int(self.radius * 2), int(self.radius * 2)))
 
-            self.sprite = self.sprite[:, :, :3] * self.mask
-            self.sprite = self.sprite[:, :, ::-1]
-            self.sprite_on = True
-        except:
-            self.sprite = None
-            print("Error reading sprite image file")
+                mask = self.sprite[:, :, 3] / 255
+
+                self.mask = np.stack([mask, mask, mask]).transpose([1, 2, 0])
+                inv_mask = 1 - mask.copy()
+                self.inv_mask = np.stack([inv_mask, inv_mask, inv_mask]).transpose([1, 2, 0])
+
+                self.sprite = self.sprite[:, :, :3] * self.mask
+                self.sprite = self.sprite[:, :, ::-1]
+                self.sprite_on = True
+            except:
+                self.sprite = None
+                print("Error reading sprite image file")
 
     def boost_block(self):
 
@@ -1010,11 +1177,11 @@ class Ball():
 
         self.get_current_pos()
 
-        if self.sprite_on:
+        if self.sprite_on and type(self.sprite) != None:
 
             degrees = np.rad2deg(self.body.angle)
             if degrees != 0:
-                sprite = rotate(self.sprite.copy().astype(np.uint8), int(degrees), reshape=False)
+                sprite = rotate(self.sprite.copy().astype(np.uint8), int(degrees*-1), reshape=False)
             else:
                 sprite = self.sprite.copy()
 
@@ -1043,7 +1210,7 @@ class Ball():
                 y_start = 0
 
             if x_start < 0:
-                val = abs(y_start)
+                val = abs(x_start)
                 sprite = sprite[:, val:]
                 mask = mask[:, val:]
                 x_start = 0
@@ -1062,9 +1229,14 @@ class Ball():
 
             board[y_start:y_end, x_start:x_end, :] = (board[y_start:y_end, x_start:x_end, :] * mask) + sprite
             # board[y_start:y_end, x_start:x_end] = board[y_start:y_end, x_start:x_end] * (1 - mask) + (img * mask)
-        elif not self.force_draw is False:
-            board = cv2.circle(board, tuple([int(x) for x in self.center]), int(self.radius), self.colour,
+        else:
+            try:
+                board = cv2.circle(board, tuple([int(x) for x in self.center]), int(self.radius), self.colour,
                                thickness=-1)  # .astype(np.uint8)
+            except cv2.error:
+                #error in drawing circle size
+                print("Circle draw error")
+                pass
 
         return board
 
@@ -1078,21 +1250,31 @@ class Block():
         self.type = poly_type
         self.pos = None
         self.current_position = []
+
         self.static = static_shape
-        self.old_id = None
+
         self.shape = [convert_from_mks(x, y) for x, y in self.body.fixtures[0].shape.vertices]
-        self.width = round(max([x[0] for x in self.shape]))
-        self.height = round(max([x[1] for x in self.shape]))
+        self.width = round(max([x[0] for x in self.shape])) + abs(round(min([x[0] for x in self.shape])))
+        self.height = round(max([x[1] for x in self.shape])) + abs(round(min([x[1] for x in self.shape])))
         self.center = None
-        self.times_off = 0
+
+        self.draw_static = draw_static
         self.draw_me = True
+
+        self.times_off = 0
+
         self.booster = None
         self.splitter = None
         self.forcer = None
         self.goal = False
         self.force_draw = False
+        self.foreground = False
+
         self.sprite = sprite
+        self.mask = None
+        self.inv_mask = None
         self.sprite_on = False
+
         if set_sprite:
             self.set_sprite()
 
@@ -1100,11 +1282,11 @@ class Block():
             self.colour = [234, 123, 23]
         else:
             self.colour = get_random_col()
+
         self.active = True
 
         self.id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))
-
-        self.draw_static = draw_static
+        self.old_id = None
 
     def __str__(self):
         str = f"active: {self.active} col: {self.colour} id: {self.id} old_id: {self.old_id} static: {self.static} \n"
@@ -1133,37 +1315,39 @@ class Block():
         self.center = convert_from_mks((self.body.transform * self.body.localCenter).x,
                                        (self.body.transform * self.body.localCenter).y)
 
-    def set_sprite(self):
+    def set_sprite(self, force=False):
+        if not self.sprite is None:
+            try:
+                img = cv2.imread(self.sprite, -1)
+                if random.randint(1, 2) == 1:
+                    img = img[:, ::-1]
 
-        try:
-            img = cv2.imread(self.sprite, -1)
-            if random.randint(1, 2) == 1:
-                img = img[:, ::-1]
-            self.sprite = cv2.resize(img, (int(self.width), int(self.height)))
+                if not force:
+                    self.sprite = cv2.resize(img, (int(self.width), int(self.height)))
 
-            if self.sprite.shape[2] == 4:
-                mask = self.sprite[:, :, 3] / 255
-                self.mask = np.stack([mask, mask, mask]).transpose([1, 2, 0])
-                self.sprite = self.sprite[:, :, :3][:, :, ::-1]
-            else:
-                self.mask = np.ones(self.sprite.shape)
+                if self.sprite.shape[2] == 4:
+                    mask = self.sprite[:, :, 3] / 255
+                    self.mask = np.stack([mask, mask, mask]).transpose([1, 2, 0])
+                    self.sprite = self.sprite[:, :, :3][:, :, ::-1]
+                else:
+                    self.mask = np.ones(self.sprite.shape)
 
-            self.inv_mask = 1 - self.mask.copy()
-            self.sprite_on = True
-        except:
-            print("Error reading sprite image file")
+                self.inv_mask = 1 - self.mask.copy()
+                self.sprite_on = True
+            except:
+                print("Error reading sprite image file")
 
     def draw(self, board, force_draw=True):
         if self.draw_me is False:
             return board
-        elif (self.draw_static is True and self.static) or self.static is False or force_draw is True:
+        elif (self.draw_static is True and self.static) or self.static is False:
             self.get_current_pos()
 
-            if self.sprite_on:
+            if self.sprite_on and type(self.sprite) != None:
 
                 center = self.center
 
-                degrees = np.rad2deg(self.body.angle)
+                degrees = np.rad2deg(self.body.angle*-1)
 
                 if degrees != 0:
                     sprite = rotate(self.sprite.copy().astype(np.uint8), int(degrees), reshape=True)
@@ -1237,15 +1421,21 @@ class Board():
             height = 600
 
         # get Background
-        board = cv2.imread(back)
-        if not board is None:
-            self.board = board[:, :, ::-1]
+        if type(back) is str:
+            self.board = cv2.imread(back)[:, :, ::-1]
+        elif type(back) is type(None):
+            self.board = None
+        else:
+            self.board = back[:, :, ::-1]
 
-        # get forground
-        board_front = cv2.imread(front, -1)
+        if type(front) is str:
+            self.board_front = cv2.imread(front, -1)
+        elif type(front) is type(None):
+            self.board_front = None
+        else:
+            self.board_front = front
 
-        if not board_front is None:
-            self.board_front = board_front
+        if not self.board_front is None:
             self.board_front_mask = (self.board_front[:, :, 3] / 255)
             self.board_front_mask = np.stack(
                 [self.board_front_mask, self.board_front_mask, self.board_front_mask]).transpose([1, 2, 0])
@@ -1254,32 +1444,38 @@ class Board():
             self.board_front_mask_inv = 1 - self.board_front_mask
 
         # get blocks
-        blocks = cv2.imread(middle)
+        if type(middle) is str:
+            blocks = cv2.imread(middle)
+        elif type(middle) is type(None):
+            blocks = None
+        else:
+            blocks = middle
 
-        if not blocks is None:
-            self.blocks = blocks
+        if sum([1 for x in [blocks, self.board] if not x is None]) > 0:
+            if not blocks is None:
+                self.blocks = blocks
 
-            if self.board is None:
-                self.board = np.zeros((self.blocks.shape[0], self.blocks.shape[1], 3))
+                if self.board is None:
+                    self.board = np.zeros((self.blocks.shape[0], self.blocks.shape[1], 3))
 
-            imgray = cv2.cvtColor(self.blocks[:, :, ::-1], cv2.COLOR_BGR2GRAY)
-            contours, hierarchy = cv2.findContours(imgray, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                imgray = cv2.cvtColor(self.blocks[:, :, ::-1], cv2.COLOR_BGR2GRAY)
+                contours, hierarchy = cv2.findContours(imgray, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-            contours = sorted(contours, key=cv2.contourArea)
-            if len(contours) > 1:
-                if (self.board.shape[0] * self.board.shape[1]) * .9 < cv2.contourArea(contours[-1]):
-                    contours = contours[:-1]
+                contours = sorted(contours, key=cv2.contourArea)
+                if len(contours) > 1:
+                    if (self.board.shape[0] * self.board.shape[1]) * .9 < cv2.contourArea(contours[-1]):
+                        contours = contours[:-1]
 
-                final_contours = []
-                for cnt in contours:
-                    epsilon = block_accuracy * cv2.arcLength(cnt, True)
-                    approx = cv2.approxPolyDP(cnt, epsilon, True, True)
-                    if len(approx) > 1:
-                        conts = constrained_delaunay_triangles([tuple(x) for x in approx.squeeze()])
+                    final_contours = []
+                    for cnt in contours:
+                        epsilon = block_accuracy * cv2.arcLength(cnt, True)
+                        approx = cv2.approxPolyDP(cnt, epsilon, True, True)
+                        if len(approx) > 1:
+                            conts = constrained_delaunay_triangles([tuple(x) for x in approx.squeeze()])
 
-                        for cn in conts:
-                            phys.create_block(cn, (0, 0), draw_static=draw)
-                            final_contours.append(cn)
+                            for cn in conts:
+                                phys.create_block(cn, (0, 0), draw_static=draw)
+                                final_contours.append(cn)
         else:
             self.board = np.zeros((height, width, 3), dtype=np.uint8)
 
@@ -1316,11 +1512,14 @@ class Messenger:
 
         self.old_message = None
         self.message = None
+        self.load_pannel(board)
+        self.goal_hits = 0
+
+    def load_pannel(self, board):
         self.pannel = np.zeros((30, board.shape[1], 3), dtype=np.uint8)
         self.pannel[:, :] = (123, 123, 123)
         self.pannel[2:-2, 2:-2] = (170, 170, 170)
         self.pannel[2:-2, -105:-4] = (210, 210, 210)
-        self.goal_hits = 0
         self.display_pannel_pause = self.pannel.copy()
 
     def auto_set(self, options, key):
@@ -1368,6 +1567,7 @@ class Messenger:
                                           ("Pause Off" if pause == True else "Pause On"), (board.shape[1] - 100, 20),
                                           cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                                           (50, 50, 50), 1, bottomLeftOrigin=False)
+
         return np.vstack((board, self.display_pannel))
 
 
