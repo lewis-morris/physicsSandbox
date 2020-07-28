@@ -28,11 +28,13 @@ def get_toolbar():
                 "Save": ["*", SelectType.null, "Save current state (*)"],
                 "Load": ["-", SelectType.null, "Load a saves state (-)"]}
 
-    creation = {"Spawn": ["s", None, "Spawn a player from the predefined spawn point (s)"],
+    creation = {"Spawn": ["z", None, "Spawn a player from the predefined spawn point (z)"],
                 "Set Spawn": ["v", SelectType.null, "Set spawn point on click (v)"],
+                "Choose Player": ["[", SelectType.null, "Select player to be controlled by the keyboard arrows ([)"],
+                "Fire Bullet": ["]", SelectType.null, "Fire a bullet from the player center to mouse click position (])"],
                 "Remove Blocks": ["e", SelectType.null, "Remove all dynamic blocks from scene (e)"],
                 "Frag All": ["h", SelectType.null, "Fragment all blocks (h)"],
-                "Delete": ["d", SelectType.select, "Delete a player with mouse - click or select (d)"],
+                "Delete": ["x", SelectType.select, "Delete a player with mouse - click or select (x)"],
                 "Delete Joint": ["u", SelectType.select, "Delete attached joints (u)"],
                 "Create": ["1", SelectType.select_point, "Create a block on mouse click (1 toggle)"],
                 "Fire Poly": ["1", SelectType.vector_direction, "Fire a block on mouse click and drag (1 toggle)"]}
@@ -137,7 +139,7 @@ def get_toolbar():
         layout.append([sg.Frame(name, buttons, pad=(12, 8), element_justification="center")])
 
     window = sg.Window('Toolbar', [[sg.Column([[sg.Button(">", key="expand",pad=(2,2))]],pad=(2,2),element_justification="center"),
-                                    sg.Column(layout,key="options")]])
+                                    sg.Column(layout,key="options")]],disable_close=True)
 
     return window
 

@@ -28,6 +28,7 @@ class SelectType(Enum):
     player_select = "14"
     d_straight_join = "15"
     player_distance = "16"
+    bullet_direction = "17"
     null = "-1"
 
 def rotation(draw,phys,event,x,y,type):

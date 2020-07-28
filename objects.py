@@ -1,4 +1,5 @@
 import datetime
+import inspect
 import random
 import string
 import time
@@ -136,7 +137,7 @@ class Draw():
                 self.coords.append(coords)
 
         elif self.status in ["distance", "weld_pos", "rotation_pos", "wheel_draw", "wheel_move", "rectangle_draw",
-                             "circle_draw", "line_draw", "length"]:
+                             "circle_draw", "line_draw", "length","bullet"]:
             self.locations.append([x, y])
         elif self.status in ["double_dist"] and len(self.player_list) == 1:
 
@@ -193,7 +194,7 @@ class Draw():
         if len(self.locations) == 0:
             return board
         elif len(self.locations) == 1 and not self.status in ["wheel_draw", "wheel_move", "circle_move", "line_draw",
-                                                              "double_dist", "double_dist1"]:
+                                                              "double_dist", "double_dist1","bullet"]:
             board = cv2.circle(board, tuple(self.locations[0]), 2, (240, 14, 14), -1)
         elif self.status in ["double_dist", "double_dist1"] and 1 < len(self.locations) <= 3:
             board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
@@ -224,7 +225,7 @@ class Draw():
         elif len(self.locations) >= 2 and (self.status in ["poly", "frag"]):
             # used for drawing the rough shape of the polygon
             for i in range(len(self.locations) - 1):
-                #board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
+                # board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
                 board = cv2.line(board, tuple(self.locations[i]), tuple(self.locations[i + 1]), (240, 14, 14), 2)
         elif self.status in ["delete", "select", "rectangle_draw", "rectangle_move"]:
             board = cv2.rectangle(board, tuple([int(x) for x in self.locations[0]]),
@@ -249,12 +250,14 @@ class Draw():
         # draw poly
         if not len(self.player_list) == 0:
             for block in self.player_list:
-                coord = get_poly_from_ob(block, 3).exterior.coords
-                for i in range(len(coord)):
-                    co1 = tuple([int(x) for x in coord[i]])
-                    co2 = tuple([int(x) for x in coord[(i + 1) if i != len(coord) - 1 else 0]])
-                    board = cv2.line(board, co1, co2, (170, 240, 7), 3)
-                    board = cv2.line(board, co1, co2, (240, 50, 14), 2)
+                #dont draw if player
+                if not block.is_player:
+                    coord = get_poly_from_ob(block, 3).exterior.coords
+                    for i in range(len(coord)):
+                        co1 = tuple([int(x) for x in coord[i]])
+                        co2 = tuple([int(x) for x in coord[(i + 1) if i != len(coord) - 1 else 0]])
+                        board = cv2.line(board, co1, co2, (170, 240, 7), 3)
+                        board = cv2.line(board, co1, co2, (240, 50, 14), 2)
 
         return board
 
@@ -298,6 +301,48 @@ class Physics():
             self.options[k] = {}
             for kk, vv in config[k].items():
                 self.options[k][kk] = get_config(k, kk, config)
+
+    def impulse_player(self, key):
+
+        player = [bl for bl in self.block_list if bl.is_player]
+        vec = None
+        currentDir = player[0].body.linearVelocity
+        if len(player) >= 1 and key in [ord("a"), ord("w"), ord("s"), ord("d")]:
+
+            if key == ord("a"):
+                move_func = player[0].body.ApplyLinearImpulse if self.options["player"]["horizontal_impulse"] else \
+                player[0].body.ApplyForce
+                vec = np.array([-self.options["player"]["horizontal_strength"], currentDir.y])
+
+            elif key == ord("w"):
+                if player[0].body.userData["player_allow_impulse"] is True or not self.options["player"]["restrict_jumps"]:
+                    y = -self.options["player"]["vertical_strength"]
+                else:
+                    y = currentDir.y
+                move_func = player[0].body.ApplyLinearImpulse if self.options["player"]["vertical_impulse"] else player[0].body.ApplyForce
+                vec = np.array([currentDir.x, y])
+
+            elif key == ord("s"):
+                move_func = player[0].body.ApplyLinearImpulse if self.options["player"]["vertical_impulse"] else player[
+                    0].body.ApplyForce
+                vec = np.array([currentDir.x, self.options["player"]["vertical_strength"] if self.options["player"][
+                    "allow_downward_movement"] else 0])
+
+
+            elif key == ord("d"):
+                move_func = player[0].body.ApplyLinearImpulse if self.options["player"]["horizontal_impulse"] else \
+                player[0].body.ApplyForce
+                vec = np.array([self.options["player"]["horizontal_strength"], currentDir.y])
+
+            if not vec is None:
+                if self.options["player"]["restrict_speed"]:
+                    vec[0] = vec[0] - player[0].body.linearVelocity.x
+
+                vec = vec * player[0].body.mass
+
+                move_func(vec, player[0].body.worldCenter, wake=True)
+            else:
+                print("Player impulse error")
 
     def change_config(self, config=None):
         if config is None:
@@ -366,21 +411,42 @@ class Physics():
         all_joints = {}
         for i, joint in enumerate(block.body.joints):
             joints_dic = {"type": type(joint.joint)}
-            
-            if hasattr(joint.joint, "anchorA"):
-                anc = joint.joint.anchorA
-                joints_dic["anchorA"] = [anc.x, anc.y]
 
-            if hasattr(joint.joint, "anchorB"):
-                anc = joint.joint.anchorB
-                joints_dic["anchorB"] = [anc.x, anc.y]
+            lower_attributes = [v.lower() for v in dir(joint.joint) if
+                                not v.startswith("_") and v not in ["this", "next", "thisown", "type", "userData"]]
+            normal_attributes = [v for v in dir(joint.joint) if
+                                 not v.startswith("_") and v not in ["this", "next", "thisown", "type", "userData"]]
 
-            if hasattr(joint.joint, "bodyA"):
-                joints_dic["bodyA"] = joint.joint.bodyA.userData["ob"].id
-            if hasattr(joint.joint, "bodyB"):
-                joints_dic["bodyB"] = joint.joint.bodyB.userData["ob"].id
-            if hasattr(joint.joint, "maxLength"):
-                joints_dic["maxLength"] = joint.joint.maxLength
+            for attr in normal_attributes:
+
+                if attr is "anchorA" and hasattr(joint.joint, "anchorA"):
+                    anc = joint.joint.anchorA
+                    joints_dic["anchorA"] = [anc.x, anc.y]
+                elif attr is "anchorB" and hasattr(joint.joint, "anchorB"):
+                    anc = joint.joint.anchorB
+                    joints_dic["anchorB"] = [anc.x, anc.y]
+                elif attr is "bodyA" and hasattr(joint.joint, "bodyA"):
+                    joints_dic["bodyA"] = joint.joint.bodyA.userData["ob"].id
+                elif attr is "bodyB" and hasattr(joint.joint, "bodyB"):
+                    joints_dic["bodyB"] = joint.joint.bodyB.userData["ob"].id
+                elif attr is "groundAnchorA" and hasattr(joint.joint, "groundAnchorA"):
+                    joints_dic["groundAnchorA"] = joint.joint.groundAnchorA.userData["ob"].id
+                elif attr is "groundAnchorB" and hasattr(joint.joint, "groundAnchorB"):
+                    joints_dic["groundAnchorB"] = joint.joint.groundAnchorA.userData["ob"].id
+                else:
+                    ok = False
+                    if "get" + attr.lower() in lower_attributes:
+                        index = lower_attributes.index("get" + attr.lower())
+                        name = normal_attributes[index]
+                        attrr = getattr(joint.joint, name)
+                        val = attrr()
+                        ok = True
+                    else:
+                        if not inspect.ismethod(getattr(joint.joint, attr)):
+                            val = getattr(joint.joint, attr)
+                            ok = True
+                    if ok and "b2" not in str(type(val)):
+                        joints_dic[attr] = val
 
             all_joints[i] = joints_dic
 
@@ -425,17 +491,16 @@ class Physics():
             # get current block and add settings
             block = self.block_list[-1]
 
-
-            #set block details
+            # set block details
             for k, v in block_info["block"].items():
                 if hasattr(block, k):
                     setattr(block, k, v)
 
-            #reseize sprite
+            # reseize sprite
 
             if not block.sprite is None:
-                if block_info["block"]["type"] in [-1,1,3]:
-                    block.sprite = cv2.resize(block.sprite,dsize=(int(block.width),int(block.height)))
+                if block_info["block"]["type"] in [-1, 1, 3]:
+                    block.sprite = cv2.resize(block.sprite, dsize=(int(block.width), int(block.height)))
                     block.mask = cv2.resize(block.mask, dsize=(int(block.width), int(block.height)))
                     block.inv_mask = cv2.resize(block.inv_mask, dsize=(int(block.width), int(block.height)))
                 else:
@@ -463,7 +528,11 @@ class Physics():
                                 setattr(block.body.localCenter, "x", v[0])
                                 setattr(block.body.localCenter, "y", v[1])
                     else:
-                        setattr(block.body, k, v)
+                        try:
+                            setattr(block.body, k, v)
+                        except AssertionError:
+                            ##error setting some read only values
+                            pass
 
             for k, v in block_info["mass"].items():
                 if hasattr(block.body.massData, k):
@@ -503,6 +572,38 @@ class Physics():
                     else:
                         print("help")
 
+                    # loop the sorted values and update
+                    this_joint = self.world.joints[-1]
+                    methods = inspect.getmembers(this_joint, lambda a: (inspect.isroutine(a)))
+                    lower_methods = [x[0].lower() for x in
+                                     [a for a in methods if not (a[0].startswith('__') and a[0].endswith('__'))]]
+                    methods = [x[0] for x in
+                               [a for a in methods if not (a[0].startswith('__') and a[0].endswith('__'))]]
+
+                    for key, val in v.items():
+                        if not key in ["anchorA", "anchorB", "bodyA", "bodyB", "groundAnchorA", "groundAnchorB",
+                                       "type"]:
+                            if "set" + key.lower() in lower_methods:
+                                method_name = methods[lower_methods.index("set" + key.lower())]
+                                set_meth = getattr(this_joint, method_name)
+                            else:
+                                set_meth = None
+
+                            if not set_meth is None:
+                                if type(val) is tuple:
+                                    if len(val) == 2:
+                                        set_meth(val[0], val[1])
+                                    elif len(val) == 3:
+                                        set_meth(val[0], val[1], val[2])
+                                    elif len(val) == 4:
+                                        set_meth(val[0], val[1], val[2], val[3])
+                                else:
+                                    set_meth(val)
+                            else:
+                                try:
+                                    setattr(this_joint, key, val)
+                                except:
+                                    pass
 
         return new_obs
 
@@ -566,10 +667,6 @@ class Physics():
                                 setattr(block_new.body, k, v)
                         except Exception as e:
                             print(e)
-                if allow_another is True:
-                    block_new.body.userData["split_me"]["ok_do"] = False
-                else:
-                    block_new.body.userData["split_me"]["ok_do"] = True
 
             self.delete(bl)
 
@@ -610,7 +707,8 @@ class Physics():
             return self.options[main][sub]
 
     def create_block(self, shape=None, pos=None, rest=None, density=None, friction=None, poly_type=None,
-                     set_sprite=False, draw_static=True, size=None, static=False, draw=None, sq_points=False,foreground=False):
+                     set_sprite=False, draw_static=True, size=None, static=False, draw=None, sq_points=False,
+                     foreground=False):
         """
         Create the block object
 
@@ -655,8 +753,9 @@ class Physics():
             if poly_type == 2:
                 shape = int(size / 2)
             elif poly_type == 1:
-                size_half = int(size/2)
-                shape = [[-size_half, -size_half], [-size_half, size_half], [size_half, size_half], [size_half, -size_half]]
+                size_half = int(size / 2)
+                shape = [[-size_half, -size_half], [-size_half, size_half], [size_half, size_half],
+                         [size_half, -size_half]]
 
 
             elif poly_type == 3:
@@ -770,8 +869,14 @@ class Physics():
 
         for i in range(blocks_length, -1, -1):
             bl = self.block_list[i]
-            if bl.body.userData["split_me"]["do"] and bl.body.userData["split_me"]["ok_do"]:
-                self.fractal_block(bl, False)
+            if bl.body.userData["bullet_actions"] == "hit":
+                if self.options["player"]["bullet_fragment"]:
+                    self.fractal_block(bl, False)
+                else:
+                    self.delete(bl)
+
+            elif bl.body.userData["bullet_actions"] == "kill":
+                self.delete(bl)
 
     def draw_blocks(self, board, ground_only=False, ground=False):
         """
@@ -783,18 +888,13 @@ class Physics():
         # split sensors and blocks
         floor = [bl for bl in self.block_list if
                  bl.body.fixtures[0].sensor is False and bl.static is True]  # and not bl.force_draw is True)]
-        sensor_blocks = [bl for bl in self.block_list if
-                         bl.body.fixtures[0].sensor == True and bl.foreground == False and bl not in floor]
-
-        foreground = [bl for bl in self.block_list if
-                         bl.body.fixtures[0].sensor == True and bl.foreground == True and not bl in floor and not bl in sensor_blocks]
+        sensor_blocks = [bl for bl in self.block_list if bl.body.fixtures[0].sensor == True and bl.foreground == False]
+        player = [bl for bl in self.block_list if bl.is_player is True]
+        foreground = [bl for bl in self.block_list if bl.body.fixtures[0].sensor == True and bl.foreground == True]
 
         # and not bl.force_draw is True)]
         blocks = [bl for bl in self.block_list if
-                  bl not in sensor_blocks and bl not in floor and not bl in foreground ]  # and not bl.force_draw is True)]
-
-
-
+                  bl not in sensor_blocks and bl not in floor and bl not in foreground and bl not in player]  # and not bl.force_draw is True)]
 
         if self.draw_objects["ground"]:
             for bl in floor:
@@ -821,8 +921,14 @@ class Physics():
             # draw blocks undernear
             for bl in blocks:
                 board = bl.draw(board)
+            for bl in player:
+                board = bl.draw(board)
         else:
             for bl in blocks:
+                if bl.force_draw:
+                    board = bl.draw(board)
+
+            for bl in player:
                 if bl.force_draw:
                     board = bl.draw(board)
 
@@ -915,8 +1021,8 @@ class Physics():
                                      anchorA=lines[0],
                                      anchorB=lines[2],
                                      ratio=1)
-                                     # maxLengthA=calculateDistance(lines[0][0], lines[0][1], lines[1][0], lines[1][1]),
-                                     # maxLengthB=calculateDistance(lines[2][0], lines[2][1], lines[3][0], lines[3][1]))
+        # maxLengthA=calculateDistance(lines[0][0], lines[0][1], lines[1][0], lines[1][1]),
+        # maxLengthB=calculateDistance(lines[2][0], lines[2][1], lines[3][0], lines[3][1]))
 
     def create_chain(self, a, b, lines, stretchy=False):
         last_ob = 0
@@ -1100,8 +1206,7 @@ class Ball():
 
     def __init__(self, body, set_sprite=False, sprite=None, draw=True, poly_type=None):
         self.body = body
-        self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False,
-                              "split_me": {"do": False, "ok_do": True}}
+        self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False, "player_allow_impulse": True, "bullet_actions":None}
         self.type = poly_type
         self.pos = None
         self.current_position = []
@@ -1120,6 +1225,9 @@ class Ball():
         self.splitter = False
         self.forcer = None
 
+        self.bullet = False
+        self.bullet_creator = None
+
         self.id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))
         self.sprite = sprite
         self.mask = None
@@ -1128,6 +1236,8 @@ class Ball():
         if set_sprite is True:
             self.set_sprite()
 
+        self.is_player = False
+
     def __str__(self):
 
         str = f"active: {self.active} col: {self.colour} id: {self.id} old_id: {self.old_id} static: {self.static} \n"
@@ -1135,6 +1245,9 @@ class Ball():
             str += f"Joint: {type(x.joint)} bodyA id {x.joint.bodyA.userData['ob'].id} oldId {x.joint.bodyA.userData['ob'].old_id} bodyB id {x.joint.bodyB.userData['ob'].id} oldId {x.joint.bodyB.userData['ob'].old_id}\n"
 
         return str
+
+    def get_poly(self):
+        return get_poly_from_ob(self,3)
 
     def get_current_pos(self):
         self.center = convert_from_mks((self.body.transform * self.body.localCenter).x,
@@ -1181,7 +1294,7 @@ class Ball():
 
             degrees = np.rad2deg(self.body.angle)
             if degrees != 0:
-                sprite = rotate(self.sprite.copy().astype(np.uint8), int(degrees*-1), reshape=False)
+                sprite = rotate(self.sprite.copy().astype(np.uint8), int(degrees * -1), reshape=False)
             else:
                 sprite = self.sprite.copy()
 
@@ -1232,12 +1345,14 @@ class Ball():
         else:
             try:
                 board = cv2.circle(board, tuple([int(x) for x in self.center]), int(self.radius), self.colour,
-                               thickness=-1)  # .astype(np.uint8)
+                                   thickness=-1)  # .astype(np.uint8)
             except cv2.error:
-                #error in drawing circle size
+                # error in drawing circle size
                 print("Circle draw error")
                 pass
-
+        if self.is_player:
+            board = cv2.circle(board, tuple([int(x) for x in self.center]), int(self.radius), (143, 255, 145),
+                               thickness=2)
         return board
 
 
@@ -1245,8 +1360,7 @@ class Block():
 
     def __init__(self, body, static_shape=True, set_sprite=False, sprite=None, draw_static=True, poly_type=None):
         self.body = body
-        self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False,
-                              "split_me": {"do": False, "ok_do": True}}
+        self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False, "player_allow_impulse": True, "bullet_actions":None}
         self.type = poly_type
         self.pos = None
         self.current_position = []
@@ -1270,11 +1384,14 @@ class Block():
         self.force_draw = False
         self.foreground = False
 
+        self.bullet = False
+        self.bullet_creator = None
+
         self.sprite = sprite
         self.mask = None
         self.inv_mask = None
         self.sprite_on = False
-
+        self.is_player = False
         if set_sprite:
             self.set_sprite()
 
@@ -1294,7 +1411,28 @@ class Block():
             str += f"Joint: {type(x.joint)} bodyA id {x.joint.bodyA.userData['ob'].id} oldId {x.joint.bodyA.userData['ob'].old_id} bodyB id {x.joint.bodyB.userData['ob'].id} oldId {x.joint.bodyB.userData['ob'].old_id}\n"
 
         return str
+    def get_poly(self):
+        return get_poly_from_ob(self,3)
+    def set_as_bullet(self,vector,id):
+        self.bullet_creator = id
+        #set the block as a bullet for colision detection
+        self.bullet = True
+        self.colour = (255, 17, 0)
+        #set as a sensor
+        self.body.fixtures[0].sensor = True
 
+        #turn off the gravity so it just keeps going with no effect on the physics
+        self.body.gravityScale = 0
+
+        #impulse the bullet
+        if vector is None:
+            vector
+        try:
+            self.body.ApplyLinearImpulse(vector*self.body.mass,self.body.worldCenter,wake=True)
+        except:
+            pass
+        #stop rotation
+        self.body.fixedRotation = True
     def boost_block(self):
 
         for impul in self.body.userData["impulses"]:
@@ -1347,7 +1485,7 @@ class Block():
 
                 center = self.center
 
-                degrees = np.rad2deg(self.body.angle*-1)
+                degrees = np.rad2deg(self.body.angle * -1)
 
                 if degrees != 0:
                     sprite = rotate(self.sprite.copy().astype(np.uint8), int(degrees), reshape=True)
@@ -1396,10 +1534,19 @@ class Block():
 
                 board[y_start:y_end, x_start:x_end, :] = (board[y_start:y_end, x_start:x_end, :] * (1 - mask)) + sprite
                 # board[y_start:y_end, x_start:x_end] = board[y_start:y_end, x_start:x_end] * (1 - mask) + (img * mask)
-                return board
             else:
-                out_img = cv2.fillConvexPoly(board, self.current_position.astype(np.int32), self.colour)
-                return out_img
+                board = cv2.fillConvexPoly(board, self.current_position.astype(np.int32), self.colour)
+
+            if self.is_player:
+                for i in range(len(self.current_position) - 1):
+                    board = cv2.line(board, tuple([int(x) for x in self.current_position[i]]),
+                                     tuple([int(x) for x in self.current_position[i + 1]]), (143, 255, 145),
+                                     thickness=2)
+
+                board = cv2.line(board, tuple([int(x) for x in self.current_position[-1]]),
+                                 tuple([int(x) for x in self.current_position[0]]), (143, 255, 145), thickness=2)
+
+            return board
         else:
             return board
 
@@ -1408,6 +1555,7 @@ class Board():
     def __init__(self):
         self.board = None
         self.board_front = None
+        self.run = True
 
     def load_blank(self, x, y):
         "Used for a blank board"
@@ -1609,6 +1757,42 @@ class Contacter(b2ContactListener):
         #     contact.fixtureA.body.userData["split_me"]["do"] = True
         #     return
 
+        if "ob" in contact.fixtureA.body.userData and "ob" in contact.fixtureB.body.userData:
+            #check for if off ground and allowed another jump
+            if contact.fixtureA.body.userData["ob"].is_player and contact.fixtureB.body.userData["ob"].static:
+                contact.fixtureA.body.userData["player_allow_impulse"] = True
+
+            #is bullet and has hit dynamic block?
+            is_bullet = contact.fixtureA.body.userData["ob"].bullet
+            ignore_id = contact.fixtureA.body.userData["ob"].bullet_creator
+            contact_id = contact.fixtureB.body.userData["ob"].id
+
+            if is_bullet and ignore_id != contact_id:
+                # check if small then dont destroy the bullet
+                if contact.fixtureB.body.userData["ob"].get_poly().area > 200:
+                    contact.fixtureA.body.userData["bullet_actions"] = "kill"
+
+                if not contact.fixtureB.body.userData["ob"].static:
+                    contact.fixtureB.body.userData["bullet_actions"] = "hit"
+
+        if "ob" in contact.fixtureB.body.userData and "ob" in contact.fixtureA.body.userData:
+            #check for if off ground and allowed another jump
+            if contact.fixtureB.body.userData["ob"].is_player and contact.fixtureA.body.userData["ob"].static:
+                contact.fixtureB.body.userData["player_allow_impulse"] = True
+
+            # is bullet and has hit dynamic block?
+            is_bullet = contact.fixtureB.body.userData["ob"].bullet
+            ignore_id = contact.fixtureB.body.userData["ob"].bullet_creator
+            contact_id = contact.fixtureA.body.userData["ob"].id
+
+            if is_bullet and ignore_id != contact_id:
+                #check if small then dont destroy the bullet
+                if contact.fixtureA.body.userData["ob"].get_poly().area > 200:
+                    contact.fixtureB.body.userData["bullet_actions"] = "kill"
+
+                if not contact.fixtureA.body.userData["ob"].static:
+                    contact.fixtureA.body.userData["bullet_actions"] = "hit"
+
     def PreSolve(self, contact, impulse):
         pass
 
@@ -1616,4 +1800,10 @@ class Contacter(b2ContactListener):
         pass
 
     def EndContact(self, contact):
-        pass
+
+        if "ob" in contact.fixtureA.body.userData and "ob" in contact.fixtureB.body.userData:
+            if contact.fixtureA.body.userData["ob"].is_player and contact.fixtureB.body.userData["ob"].static:
+                contact.fixtureA.body.userData["player_allow_impulse"] = False
+        if "ob" in contact.fixtureB.body.userData and "ob" in contact.fixtureA.body.userData:
+            if contact.fixtureB.body.userData["ob"].is_player and contact.fixtureA.body.userData["ob"].static:
+                contact.fixtureB.body.userData["player_allow_impulse"] = False

@@ -6,6 +6,7 @@ from gui import update_block, get_fixtures, get_toolbar, deal_with_toolbar_event
 from keyboardmouse import *
 from objects import load
 
+
 def add(event, x, y, flags, param):
     global draw
     global cur_key
@@ -159,7 +160,21 @@ def add(event, x, y, flags, param):
             else:
                 draw, phys = move_clone(draw, phys, x, y, event, False)
 
-    elif cur_key[0] == "d":
+    elif cur_key[0] == "]":
+
+        """
+        Used to select fire bullets from the player on click
+        """
+        draw, phys = fire_bullet(draw, phys, event, x, y, cur_key)
+
+    elif cur_key[0] == "[":
+
+        """
+        Used to select objects to be a player click
+        """
+        draw, phys = make_player(draw, phys, event, x, y, cur_key)
+
+    elif cur_key[0] == "x":
 
         """
         Used to delete objects on click
@@ -209,12 +224,11 @@ if __name__ == "__main__":
 
     toolbar = get_toolbar()
 
-
-
     # start loop
-    run = True
+    if not hasattr(board,"run"):
+        setattr(board,"run",True)
 
-    while run:
+    while board.run:
 
         #read toolbar
         toolbar, key, name = deal_with_toolbar_event(toolbar)
@@ -248,6 +262,7 @@ if __name__ == "__main__":
 
         # show board
         cv2.imshow("Board", board_show[:, :, ::-1])
+
 
         # timer log - this handles FPS
         timer.log()

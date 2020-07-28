@@ -4,7 +4,7 @@ import numpy as np
 from shapely import affinity
 
 from draw_functions import SelectType
-from functions import get_config
+from functions import get_config, convert_from_mks
 from gui import save_gui, load_gui, load_options, update_background
 from objects import Messenger, load, pickler
 
@@ -13,6 +13,7 @@ from functions import get_squ, check_contains_all, get_clicked, convert_to_mks, 
     get_poly_from_ob
 from Box2D import b2MouseJoint, b2RevoluteJoint
 
+
 def action_key_press(key, cur_key, draw, phys, msg, timer, board):
     """
     Deal with the key presses
@@ -20,7 +21,7 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
     :return:
     """
 
-    #delete any old mouse joints prior to dealing with the next keypress
+    # delete any old mouse joints prior to dealing with the next keypress
     if key != ord("m") and msg.message != "Mouse Move":
         for jn in phys.world.joints:
             if type(jn) is b2MouseJoint:
@@ -32,19 +33,16 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
     elif key == ord("r"):
         # RESET SCREEN
         draw.reset()
-        msg = Messenger(get_config("screen", "fps"))
+        msg = Messenger(phys.options["screen"]["fps"], board.board)
         msg.set_message("Reset")
-        timer, phys, board, SCREEN_HEIGHT, SCREEN_WIDTH = load(get_config("screen", "fps"),
-
-                                                               get_config("physics", "gravity"))
+        timer, phys, board, SCREEN_HEIGHT, SCREEN_WIDTH = load(get_config("screen", "fps"))
 
     elif key == ord("q"):
         # QUIT
         msg.set_message("Quit")
-        global run
-        run = False
+        board.run = False
 
-    elif key == ord("s"):
+    elif key == ord("z"):
         # SPAWN
         msg.set_message("Spawn")
         phys.create_block()
@@ -55,11 +53,28 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
         options = {"Remove Joints": SelectType.select}
         cur_key = msg.auto_set(options, key)
 
-    elif key == ord("d"):
+    elif key == ord("x"):
         # draw delete blocks
         draw.reset()
         options = {"Delete": SelectType.select}
         cur_key = msg.auto_set(options, key)
+
+    elif key == ord("]"):
+        # draw polygon
+        draw.reset()
+        options = {"Shoot Bullet": SelectType.bullet_direction}
+        cur_key = msg.auto_set(options, key)
+
+    elif key == ord("["):
+        # draw polygon
+        draw.reset()
+        options = {"Choose Player": SelectType.null}
+        cur_key = msg.auto_set(options, key)
+
+    elif key in [ord("a"), ord("w"), ord("s"), ord("d")]:
+        # draw polygon
+        draw.reset()
+        phys.impulse_player(key)
 
     elif key == ord("p"):
         # draw polygon
@@ -70,7 +85,8 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
     elif key == ord("b"):
         # draw polygon
         draw.reset()
-        options = {"Fore Polygon": SelectType.draw, "Fore Rectangle": SelectType.rectangle, "Fore Circle": SelectType.circle}
+        options = {"Fore Polygon": SelectType.draw, "Fore Rectangle": SelectType.rectangle,
+                   "Fore Circle": SelectType.circle}
         cur_key = msg.auto_set(options, key)
 
     elif key == ord("f"):
@@ -233,14 +249,14 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
         options = {"Distance Joint": SelectType.straight_join, "Rope Joint": SelectType.straight_join,
                    "Electric": SelectType.line_join, "Springy Rope": SelectType.line_join,
                    "Weld Joint": SelectType.straight_join, "Wheel Joint": SelectType.circle,
-                   "Rotation Joint": SelectType.rotation_select,"Pulley": SelectType.d_straight_join}
+                   "Rotation Joint": SelectType.rotation_select, "Pulley": SelectType.d_straight_join}
 
         cur_key = msg.auto_set(options, key)
 
     return cur_key, draw, phys, msg, timer, board
 
-def rotate_block(draw, phys, event, x, y, type):
 
+def rotate_block(draw, phys, event, x, y, type):
     if type[1:] == SelectType.player_select.value:
         if draw.stage == 0:
             draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
@@ -259,7 +275,8 @@ def rotate_block(draw, phys, event, x, y, type):
                         draw.reset()
         elif draw.stage == 1:
 
-            draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type[1] + SelectType.player_distance.value, False)
+            draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y,
+                                                          type[1] + SelectType.player_distance.value, False)
             if len(draw.locations) == 2:
                 if draw.locations[0][1] > draw.locations[1][1]:
                     up = True
@@ -270,12 +287,14 @@ def rotate_block(draw, phys, event, x, y, type):
                 if not up is None:
                     for bl in draw.player_list:
                         bl.body.angle += 0.1 if up is True else -0.1
+                        bl.body.awake = True
+                        bl.body.alive = True
             if ans is True:
                 draw.reset()
     return draw, phys
 
-def transform_block(draw, phys, event, x, y, type):
 
+def transform_block(draw, phys, event, x, y, type):
     if type[1:] == SelectType.player_select.value:
         if draw.stage == 0:
             draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
@@ -294,7 +313,8 @@ def transform_block(draw, phys, event, x, y, type):
                         draw.reset()
         elif draw.stage == 1:
 
-            draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type[1] + SelectType.player_distance.value, False)
+            draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y,
+                                                          type[1] + SelectType.player_distance.value, False)
             if len(draw.locations) == 2:
                 if draw.locations[0][1] > draw.locations[1][1]:
                     up = True
@@ -306,22 +326,26 @@ def transform_block(draw, phys, event, x, y, type):
                     for i in np.arange(len(draw.player_list) - 1, -1, -1):
                         bl = draw.player_list[i]
                         phys, bl_new = change_size(phys, bl, up)
+
                         draw.player_list[i] = bl_new
+                        draw.player_list[i].alive = True
+                        draw.player_list[i].awake = True
                         del bl
 
             if ans is True:
                 draw.reset()
     return draw, phys
 
-def change_size(phys, block, up=True):
 
+def change_size(phys, block, up=True):
     block_info = phys.save_block_as_dict(block)
-    old_poly = get_poly_from_ob(block,3)
+    old_poly = get_poly_from_ob(block, 3)
     center = old_poly.centroid
 
-    if block_info["block"]["type"] in [-1,1,3]:
+    if block_info["block"]["type"] in [-1, 1, 3]:
+        old_poly = Polygon(block_info["block"]["shape"])
         if up:
-            poly_new = affinity.scale(old_poly,1.05,1.05)
+            poly_new = affinity.scale(old_poly, 1.05, 1.05)
 
         else:
             poly_new = affinity.scale(old_poly, .95, .95)
@@ -337,20 +361,19 @@ def change_size(phys, block, up=True):
         block_info["block"]["height"] = height
         block_info["block"]["width"] = width
 
-        new_pos = [[x[0] - center.x, x[1] - center.y] for x in list(poly_new.exterior.coords)]
-        block_info["block"]["shape"] = new_pos
+        # new_pos = [[x[0] - center.x, x[1] - center.y] for x in list(old_poly.exterior.coords)]
+        block_info["block"]["shape"] = poly_new.exterior.coords
 
 
     else:
         if up:
-            block_info["block"]["radius"] *=1.05
+            block_info["block"]["radius"] *= 1.05
 
         else:
             block_info["block"]["radius"] *= 0.95
 
             if block_info["block"]["radius"] < 4:
                 block_info["block"]["radius"] = 4
-
 
     phys.delete(block)
     phys.create_pre_def_block([block_info])
@@ -440,10 +463,11 @@ def pulley(draw, phys, event, x, y, type):
                                                       allow_clicked=False, log_clicked=False,
                                                       allow_multiple=True)
         if ans is True:
-            phys.create_pulley(draw.player_list[0],draw.player_list[1],draw.locations)
+            phys.create_pulley(draw.player_list[0], draw.player_list[1], draw.locations)
             draw.reset()
 
     return draw, phys
+
 
 def rotation(draw, phys, event, x, y, type):
     if type[1:] == SelectType.rotation_select.value:
@@ -455,6 +479,36 @@ def rotation(draw, phys, event, x, y, type):
             draw.reset()
 
     return draw, phys
+
+
+def fire_bullet(draw, phys, event, x, y, typer):
+    draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, typer,
+                                                  allow_clicked=True, log_clicked=True,
+                                                  allow_multiple=False)
+
+    if ans == True:
+        player = [bl for bl in phys.block_list if bl.is_player][0]
+        center = player.body.worldCenter
+        center = convert_from_mks(center.x, center.y)
+        if hasattr(player, "width"):
+            width = int(player.width / 3)
+        else:
+            width = player.radius / 2
+
+        if 5 < width:
+            width = 5
+
+        # set speed and restrict to max speed in settings
+
+        if not draw.vector is None:
+            vector = np.array(draw.vector)
+            phys.create_block(pos=center, poly_type=1, size=width, draw=True)
+            phys.block_list[-1].set_as_bullet(vector, player.id)
+
+        draw.reset()
+
+    return draw, phys
+
 
 def fire(draw, phys, event, x, y, type):
     if type[1:] == SelectType.vector_direction.value:
@@ -688,8 +742,8 @@ def draw_ground(draw, phys, event, x, y, type):
             draw.reset()
     return draw, phys
 
-def draw_foreground(draw, phys, event, x, y, type):
 
+def draw_foreground(draw, phys, event, x, y, type):
     if type[1:] == SelectType.draw.value:
         # If polygon draw
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
@@ -699,7 +753,7 @@ def draw_foreground(draw, phys, event, x, y, type):
             coords = poly.exterior.coords
             cen = poly.centroid
             coords = [(int(co[0] - cen.x), int(co[1] - cen.y)) for co in coords]
-            phys.create_block(pos=(cen.x, cen.y), poly_type=-1, shape=coords,static=True,foreground=True)
+            phys.create_block(pos=(cen.x, cen.y), poly_type=-1, shape=coords, static=True, foreground=True)
             draw.reset()
 
     elif type[1:] == SelectType.rectangle.value:
@@ -727,6 +781,7 @@ def draw_foreground(draw, phys, event, x, y, type):
                               )
             draw.reset()
     return draw, phys
+
 
 def draw_shape(draw, phys, event, x, y, type):
     if type[1:] == SelectType.draw.value:
@@ -789,9 +844,10 @@ def player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=Tru
 
         elif type[1:] == SelectType.player_select.value:
             if event == cv2.EVENT_LBUTTONDOWN:
-                draw, phys, clicked, coords = select_player(draw, phys, x, y, "rotate","rectangle_draw", allow_mul=True)
+                draw, phys, clicked, coords = select_player(draw, phys, x, y, "rotate", "rectangle_draw",
+                                                            allow_mul=True)
                 if not clicked is None:
-                    return draw,phys,True
+                    return draw, phys, True
 
             elif event == cv2.EVENT_MOUSEMOVE and draw.status in ["rectangle_draw"]:
                 draw.log_point(x, y, draw.status)
@@ -896,25 +952,25 @@ def player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=Tru
 
                 clicked, shape = get_clicked(phys.block_list, x, y, 8)
 
-                #get inital player
+                # get inital player
                 if not clicked is None and draw.status is None:
                     draw.log_player(clicked)
                     draw.log_point(x, y, "double_dist")
-                #log second click
+                # log second click
                 elif not clicked is None and draw.status == "double_dist":
-                    draw.log_point(x,y, "double_dist")
+                    draw.log_point(x, y, "double_dist")
                     draw.status = "double_dist1"
 
                 elif not clicked is None and draw.status == "double_dist1" and len(draw.player_list) == 1:
                     draw.log_player(clicked)
-                    draw.log_point(x,y, "double_dist1")
+                    draw.log_point(x, y, "double_dist1")
 
-                elif not clicked is None and draw.status == "double_dist1" and len(draw.player_list) == 2 :
+                elif not clicked is None and draw.status == "double_dist1" and len(draw.player_list) == 2:
                     draw.log_point(x, y, "double_dist1")
                     return draw, phys, True
 
             elif event == cv2.EVENT_MOUSEMOVE:
-                if draw.status in ["double_dist","double_dist1"]:
+                if draw.status in ["double_dist", "double_dist1"]:
                     draw.log_point(x, y, draw.status)
 
             return draw, phys, False
@@ -963,6 +1019,39 @@ def player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=Tru
                     draw.log_point(x, y, "length")
 
             return draw, phys, False
+
+        elif type[1:] == SelectType.bullet_direction.value:
+
+            """
+            used to fire objects from mouse click/drag
+            """
+
+            # remove status if new type
+            # print(draw.status)
+
+            players = [bl for bl in phys.block_list if bl.is_player]
+
+            if len(players) > 0:
+                # set inital
+                center = players[0].body.worldCenter
+                draw.status = "bullet"
+                if draw.locations == []:
+                    draw.locations.append([int(x) for x in convert_from_mks(center.x, center.y)])
+                else:
+                    draw.locations[0] = [int(x) for x in convert_from_mks(center.x, center.y)]
+
+                if event == cv2.EVENT_MOUSEMOVE and draw.status == "bullet":
+                    draw.log_point(x, y, "bullet")
+                    pt1 = np.array(draw.locations[0])
+                    pt2 = np.array(draw.locations[-1])
+                    impulse = (((pt1[0] - pt2[0]) * -1) * 2, ((pt1[1] - pt2[1]) * -1) * 2)
+                    draw.vector = convert_to_mks(impulse[0], impulse[1])
+
+                if event == cv2.EVENT_LBUTTONDOWN and draw.status == "bullet":
+                    return draw, phys, True
+
+            return draw, phys, False
+
         elif type[1:] == SelectType.vector_direction.value:
 
             """
@@ -1054,7 +1143,7 @@ def get_poly_from_two_rectangle_points(loca, locb):
     return poly
 
 
-def get_set_selected(draw, phys, new_status, reset_on_none=True,last_loc = False):
+def get_set_selected(draw, phys, new_status, reset_on_none=True, last_loc=False):
     # gets and sets the selected plays - if nothing selected then then reset
     if len(draw.locations) <= 1:
         draw.reset()
@@ -1109,7 +1198,7 @@ def select_player(draw, phys, x, y, if_found=None, if_not=None, reset_if_not=Fal
 
     if not if_not is None:
         draw.log_point(x, y, if_not)
-    if reset_if_not:
+    if reset_if_not and len(draw.player_list) == 0:
         draw.reset()
 
     return draw, phys, clicked, coords
@@ -1229,6 +1318,19 @@ def move_clone(draw, phys, x=None, y=None, event=None, clone=None):
     return draw, phys
 
 
+def make_player(draw, phys, event, x, y, cur_key):
+    if event == cv2.EVENT_LBUTTONDOWN:
+        draw, phys, clicked, coords = select_player(draw, phys, x, y, None, None, reset_if_not=True, pause=False)
+        if not clicked is None:
+            for bl in phys.block_list:
+                if bl == clicked:
+                    bl.is_player = True
+                else:
+                    bl.is_player = False
+            draw.reset()
+    return draw, phys
+
+
 def mouse_joint_move(draw, phys, x=None, y=None, event=None, cur_key=None):
     if event == cv2.EVENT_LBUTTONDOWN:
 
@@ -1261,4 +1363,3 @@ def mouse_joint_move(draw, phys, x=None, y=None, event=None, cur_key=None):
         draw.reset()
 
     return draw, phys
-
