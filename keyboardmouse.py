@@ -7,7 +7,7 @@ from draw_functions import SelectType
 from functions import get_config, convert_from_mks
 from gui import save_gui, load_gui, load_options, update_background
 from objects import Messenger, load, pickler
-
+import PySimpleGUI as sg
 from shapely.geometry import Polygon
 from functions import get_squ, check_contains_all, get_clicked, convert_to_mks, calculateDistance, get_all_in_poly, \
     get_poly_from_ob
@@ -35,12 +35,15 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
         draw.reset()
         msg = Messenger(phys.options["screen"]["fps"], board.board)
         msg.set_message("Reset")
-        timer, phys, board, SCREEN_HEIGHT, SCREEN_WIDTH = load(get_config("screen", "fps"))
+        board.reset = True
 
     elif key == ord("q"):
         # QUIT
         msg.set_message("Quit")
-        board.run = False
+        val =  sg.popup_yes_no("Are you sure you want to quit?")
+        if val == "Yes":
+            board.run = False
+
 
     elif key == ord("z"):
         # SPAWN
@@ -216,15 +219,16 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
 
     elif key == ord("o"):
         # pause physics
+        draw.reset()
         phys.pause = not phys.pause
         msg.set_message("Pause" + (" On" if phys.pause is True else " Off"))
         cur_key = "o"
 
     elif key == ord("*"):
         # PICKLE BOARD
-        name = save_gui()
-        if not name == "":
-            pickler(timer, phys, draw, board, msg, name)
+        name,blurb = save_gui()
+        if not name == None:
+            pickler(timer, phys, draw, board, msg, name, blurb)
             msg.set_message("State Saved")
             cur_key = "*"
             draw.reset()
@@ -236,7 +240,7 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
     elif key == ord("5"):
 
         load_options()
-        phys.change_config()
+        phys.change_config(board = board)
 
     elif key == ord("6"):
 
@@ -247,7 +251,9 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
         # draw joints
         draw.reset()
         options = {"Distance Joint": SelectType.straight_join, "Rope Joint": SelectType.straight_join,
+                   "Prismatic Joint":SelectType.straight_join,
                    "Electric": SelectType.line_join, "Springy Rope": SelectType.line_join,
+                   "Chain": SelectType.line_join2,
                    "Weld Joint": SelectType.straight_join, "Wheel Joint": SelectType.circle,
                    "Rotation Joint": SelectType.rotation_select, "Pulley": SelectType.d_straight_join}
 
@@ -256,7 +262,7 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
     return cur_key, draw, phys, msg, timer, board
 
 
-def rotate_block(draw, phys, event, x, y, type):
+def rotate_block(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.player_select.value:
         if draw.stage == 0:
             draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
@@ -294,7 +300,7 @@ def rotate_block(draw, phys, event, x, y, type):
     return draw, phys
 
 
-def transform_block(draw, phys, event, x, y, type):
+def transform_block(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.player_select.value:
         if draw.stage == 0:
             draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
@@ -342,7 +348,7 @@ def change_size(phys, block, up=True):
     old_poly = get_poly_from_ob(block, 3)
     center = old_poly.centroid
 
-    if block_info["block"]["type"] in [-1, 1, 3]:
+    if block_info["block"]["type"] in [-1, 1, 3, 4]:
         old_poly = Polygon(block_info["block"]["shape"])
         if up:
             poly_new = affinity.scale(old_poly, 1.05, 1.05)
@@ -457,7 +463,7 @@ def draw_sensor(draw, phys, event, x, y, type, ty):
     return draw, phys
 
 
-def pulley(draw, phys, event, x, y, type):
+def pulley(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.d_straight_join.value:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
                                                       allow_clicked=False, log_clicked=False,
@@ -469,7 +475,7 @@ def pulley(draw, phys, event, x, y, type):
     return draw, phys
 
 
-def rotation(draw, phys, event, x, y, type):
+def rotation(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.rotation_select.value:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
                                                       allow_clicked=False, log_clicked=False,
@@ -481,10 +487,10 @@ def rotation(draw, phys, event, x, y, type):
     return draw, phys
 
 
-def fire_bullet(draw, phys, event, x, y, typer):
+def fire_bullet(draw, phys, event, x, y, typer, board):
     draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, typer,
                                                   allow_clicked=True, log_clicked=True,
-                                                  allow_multiple=False)
+                                                  allow_multiple=False, board = board)
 
     if ans == True:
         player = [bl for bl in phys.block_list if bl.is_player][0]
@@ -503,19 +509,19 @@ def fire_bullet(draw, phys, event, x, y, typer):
         if not draw.vector is None:
             vector = np.array(draw.vector)
             phys.create_block(pos=center, poly_type=1, size=width, draw=True)
-            phys.block_list[-1].set_as_bullet(vector, player.id)
+            phys.block_list[-1].set_as_bullet(vector, player.id, phys.options["player"]["bullets_destory_ground"])
 
         draw.reset()
 
     return draw, phys
 
 
-def fire(draw, phys, event, x, y, type):
+def fire(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.vector_direction.value:
 
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
                                                       allow_clicked=True, log_clicked=True,
-                                                      allow_multiple=False)
+                                                      allow_multiple=False, board= board)
         if ans == True:
             if len(draw.player_list) > 0:
                 try:
@@ -546,7 +552,7 @@ def fire(draw, phys, event, x, y, type):
     return draw, phys
 
 
-def select_blocks(draw, phys, event, x, y, type):
+def select_blocks(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.select.value:
 
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=True,
@@ -563,7 +569,7 @@ def select_blocks(draw, phys, event, x, y, type):
     return draw, phys
 
 
-def wheel_draw(draw, phys, event, x, y, type):
+def wheel_draw(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.circle.value:
 
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, True, True, True)
@@ -576,7 +582,7 @@ def wheel_draw(draw, phys, event, x, y, type):
     return draw, phys
 
 
-def remove_joints(draw, phys, event, x, y, type):
+def remove_joints(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.select.value:
 
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=True,
@@ -594,7 +600,7 @@ def remove_joints(draw, phys, event, x, y, type):
     return draw, phys
 
 
-def weld(draw, phys, event, x, y, type):
+def weld(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.straight_join.value:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
         if ans is True:
@@ -603,7 +609,7 @@ def weld(draw, phys, event, x, y, type):
     return draw, phys
 
 
-def distance_draw(draw, phys, event, x, y, type):
+def distance_draw(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.straight_join.value:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
         if ans is True:
@@ -612,8 +618,33 @@ def distance_draw(draw, phys, event, x, y, type):
 
     return draw, phys
 
+def prismatic(draw, phys, event, x, y, type, board=None):
+    if type[1:] == SelectType.straight_join.value and draw.stage == 0:
+        draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
 
-def rope(draw, phys, event, x, y, type):
+        if ans is True:
+            draw.stage += 1
+
+    elif type[1:] == SelectType.straight_join.value and draw.stage == 1:
+
+        draw.status = "length"
+
+        draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, "a" + str(SelectType.length.value),
+                                                      False)
+        if ans == True:
+            distance = calculateDistance(draw.locations[0][0], draw.locations[0][1], draw.locations[-1][0],
+                                         draw.locations[-1][1])
+
+            pt1 = np.array(draw.locations[0])
+            pt2 = np.array(draw.locations[-1])
+            impulse = (((pt1[0] - pt2[0]) * -1) * 2, ((pt1[1] - pt2[1]) * -1) * 2)
+            draw.vector = convert_to_mks(impulse[0], impulse[1])
+            phys.create_prismatic(draw.player_list[0], draw.player_list[1], draw.vector, draw.locations[0],distance= distance)
+            draw.reset()
+
+    return draw, phys
+
+def rope(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.straight_join.value and draw.stage == 0:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
 
@@ -640,7 +671,7 @@ def rope(draw, phys, event, x, y, type):
     return draw, phys
 
 
-def lightning(draw, phys, event, x, y, type):
+def lightning(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.line_join.value:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
         if ans is True:
@@ -649,16 +680,26 @@ def lightning(draw, phys, event, x, y, type):
     return draw, phys
 
 
-def chainish(draw, phys, event, x, y, type):
+def chainish(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.line_join.value:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
         if ans is True:
-            phys.create_chain(draw.player_list[0], draw.player_list[1], draw.locations)
+            phys.create_chainish_joint(draw.player_list[0], draw.player_list[1], draw.locations)
+            draw.reset()
+    return draw, phys
+
+def chain(draw, phys, event, x, y, type, board=None):
+    if type[1:] == SelectType.line_join2.value:
+        draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
+        if ans is True:
+            playerA, _ = get_clicked(phys.block_list,draw.locations[0][0],draw.locations[0][1],4)
+            playerB, _ = get_clicked(phys.block_list, draw.locations[0][0], draw.locations[0][1], 4)
+            phys.create_chain(playerA, playerB, draw.locations)
             draw.reset()
     return draw, phys
 
 
-def delete(draw, phys, event, x, y, type):
+def delete(draw, phys, event, x, y, type, board=None):
     # used for the fragment tool
 
     if type[1:] == SelectType.select.value:
@@ -678,7 +719,7 @@ def delete(draw, phys, event, x, y, type):
     return draw, phys
 
 
-def draw_fragment(draw, phys, event, x, y, type):
+def draw_fragment(draw, phys, event, x, y, type, board=None):
     # used for the fragment tool
     if type[1:] == SelectType.draw.value:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, True)
@@ -711,7 +752,7 @@ def draw_fragment(draw, phys, event, x, y, type):
     return draw, phys
 
 
-def draw_ground(draw, phys, event, x, y, type):
+def draw_ground(draw, phys, event, x, y, type, board=None):
     # Used to draw the ground elements
     if type[1:] == SelectType.draw.value:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
@@ -743,7 +784,7 @@ def draw_ground(draw, phys, event, x, y, type):
     return draw, phys
 
 
-def draw_foreground(draw, phys, event, x, y, type):
+def draw_foreground(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.draw.value:
         # If polygon draw
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
@@ -783,7 +824,7 @@ def draw_foreground(draw, phys, event, x, y, type):
     return draw, phys
 
 
-def draw_shape(draw, phys, event, x, y, type):
+def draw_shape(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.draw.value:
         # If polygon draw
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, False)
@@ -821,11 +862,11 @@ def draw_shape(draw, phys, event, x, y, type):
 
 
 def player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=True, log_clicked=False,
-                                insist_clicked=False, allow_multiple=True):
+                                insist_clicked=False, allow_multiple=True, board=None):
     # get player if clicked
     clicked = None
     if allow_clicked and event == cv2.EVENT_LBUTTONDOWN:
-        clicked, coords = get_clicked(phys.block_list, x, y)
+        clicked, coords = get_clicked(phys.block_list, x, y, board)
         if not clicked is None:
             if log_clicked:
                 if allow_multiple or len(draw.player_list) == 0:
@@ -946,6 +987,19 @@ def player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=Tru
                 if len(draw.player_list) == 2 and draw.status == "line_draw":
                     return draw, phys, True
 
+        elif type[1:] == SelectType.line_join2.value:
+
+            if event == cv2.EVENT_LBUTTONDOWN:
+                draw.log_point(x, y, "line_draw")
+            elif event == cv2.EVENT_MOUSEMOVE and draw.status == "line_draw":
+                if calculateDistance(draw.locations[0][0], draw.locations[0][1], x, y) > 10:
+                    draw.log_point(x, y, "line_draw")
+            elif event == cv2.EVENT_LBUTTONUP and draw.status == "line_draw":
+                draw.log_point(x, y, "line_draw")
+                return draw, phys, True
+
+            return draw, phys, False
+
         elif type[1:] == SelectType.d_straight_join.value:
 
             if event == cv2.EVENT_LBUTTONDOWN:
@@ -1063,7 +1117,7 @@ def player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=Tru
             returnme = False
             if event == cv2.EVENT_LBUTTONDOWN and draw.status == None:
                 # check if player clicked or empty space
-                draw, phys, clicked, coords = select_player(draw, phys, x, y, "fire", "fire")
+                draw, phys, clicked, coords = select_player(draw, phys, x, y, "fire", "fire", board=board)
             elif event == cv2.EVENT_LBUTTONDOWN and draw.status == "fire":
                 returnme = True
 
@@ -1170,11 +1224,11 @@ def get_set_selected(draw, phys, new_status, reset_on_none=True, last_loc=False)
 
 
 def select_player(draw, phys, x, y, if_found=None, if_not=None, reset_if_not=False, pause=True, allow_mul=False,
-                  select_all=False):
-    clicked, coords = get_clicked(phys.block_list, x, y)
+                  select_all=False, board=None):
+    clicked, coords = get_clicked(phys.block_list, x, y, board)
     if not clicked is None:
         if len(draw.player_list) == 0 or allow_mul:
-            clicked, coords = get_clicked(phys.block_list, x, y)
+            clicked, coords = get_clicked(phys.block_list, x, y, board = board)
             draw.log_player(clicked)
             # also add players connected by rotation joints as it messes things up if not
             if select_all:

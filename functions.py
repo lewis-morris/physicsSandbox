@@ -27,7 +27,7 @@ config = get_config_object('config.cfg')
 # config.read('config.cfg')
 
 config_reads = 0
-ppm = 70
+ppm = 45
 
 def convert_to_mks(x, y=None):
     global ppm
@@ -123,7 +123,7 @@ def get_config(main, sub, configIn=None):
             dic = {}
             for val in joined_dic.split(","):
                 k, v = val.split(":")
-                dic[k] = True if v.lower() == "true" else False
+                dic[k] = True if v.lower() == "true" else False if v.lower() == "false" else v
             return dic
         elif "(" in joined:
             val = [x.replace("(", "").replace(")", "") for x in val]
@@ -181,6 +181,11 @@ def get_random_col():
 
     return random.choice(cols)
 
+def get_angle(v1,v2):
+
+    y = v2[1] - v1[1]
+    x = v2[0] - v1[0]
+    return math.atan2(y, x) / math.pi * 180
 
 def unit_vector(vector):
     """ Returns the unit vector of the vector.  """
@@ -205,12 +210,23 @@ def get_all_in_poly(phys,coords):
     else:
         return blocks
 
-def get_clicked(bodies, x, y, shrink_cir=16):
+def get_clicked(bodies, x, y, board, shrink_cir=16):
     block = None
     coords = None
-    for i in np.arange(len(bodies) - 1, -1, -1):
+
+    floor = [bl for bl in bodies if
+             bl.body.fixtures[0].sensor is False and bl.static is True]  # and not bl.force_draw is True)]
+    sensor_blocks = [bl for bl in bodies if bl.body.fixtures[0].sensor == True and bl.foreground == False]
+    player = [bl for bl in bodies if bl.is_player is True]
+    foreground = [bl for bl in bodies if bl.body.fixtures[0].sensor == True and bl.foreground == True]
+
+    # and not bl.force_draw is True)]
+    blocks = [bl for bl in bodies if
+              bl not in sensor_blocks and bl not in floor and bl not in foreground and bl not in player]
+
+    for i in np.arange(len(floor+sensor_blocks+player+blocks) - 1, -1, -1):
         bl = bodies[i]
-        is_clicked, shape = check_contains(bl, (x, y), shrink_cir)
+        is_clicked, shape = check_contains(bl, (x, y), board, shrink_cir)
         if is_clicked is True:
             block = bl
             coords = shape
@@ -223,10 +239,10 @@ def calculateDistance(x1, y1, x2, y2):
     return dist
 
 
-def get_poly_from_ob(v1, shrink_cir=16):
+def get_poly_from_ob(v1, board, shrink_cir=16):
     # if not calculated then calc the position
     if v1.current_position == []:
-        v1.get_current_pos()
+        v1.get_current_pos(board)
 
     if hasattr(v1, "shape"):
         # create polygon
@@ -240,7 +256,7 @@ def get_poly_from_ob(v1, shrink_cir=16):
 def get_poly_from_verts(v1):
     return Polygon(v1)
 
-def check_contains(v1, p1, shrink_cir=16):
+def check_contains(v1, p1, board, shrink_cir=16):
     """
 
     :param v1:
@@ -249,7 +265,7 @@ def check_contains(v1, p1, shrink_cir=16):
     :param shrink_cir: Used to lower the amount of lines to create the shape - helps with fragmenting
     :return:
     """
-    polygon = get_poly_from_ob(v1, shrink_cir)
+    polygon = get_poly_from_ob(v1, board, shrink_cir)
     point = Point(p1[0], p1[1])
 
     return polygon.contains(point), list(polygon.exterior.coords)

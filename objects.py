@@ -11,7 +11,7 @@ from shapely.geometry import Polygon, LineString
 from shapely.ops import unary_union
 from draw_functions import get_enlongated_line, get_poly_from_two_rectangle_points
 from functions import get_random_col, get_config, convert_to_mks, convert_from_mks, get_poly_from_ob, dent_contour, \
-    fragment_poly, calculateDistance
+    fragment_poly, calculateDistance, get_angle
 import gc
 from Box2D import *
 import pickle
@@ -25,6 +25,7 @@ def load(height=600, width=800):
 
     timer = Timer(get_config("screen", "fps"))
     board = Board()
+    board.board_name = "base"
     phys = Physics(get_config("physics", "gravity"))
     draw = Draw()
     block_accuracy = get_config("blocks", "block_accuracy")
@@ -36,12 +37,16 @@ def load(height=600, width=800):
 
     phys.height = SCREEN_HEIGHT
     phys.width = SCREEN_WIDTH
+    board.palette = Palette()
+    board.palette.set_palllette(phys.options["screen"]["palette"])
+
     return timer, phys, board, draw, msg
 
 
-def pickler(timer, phys, draw, board, msg, pickle_name):
+def pickler(timer, phys, draw, board, msg, pickle_name, blurb):
     config = ConfigObj('config.cfg')
-    pickle_dic = {"timer": timer, "board": board, "msg": msg, "config": config}
+    board.board_name = pickle_name
+    pickle_dic = {"timer": timer, "board": board, "msg": msg, "config": config, "blurb": blurb}
     item_list = []
     for bl in phys.block_list:
         item_list.append(phys.save_block_as_dict(bl))
@@ -49,14 +54,16 @@ def pickler(timer, phys, draw, board, msg, pickle_name):
     pickle_dic["blocks"] = item_list
     pickle_dic["phys"] = {k: v for k, v in phys.__dict__.items() if not "b2" in str(type(v)) and not k == "block_list"}
     pickle_dic["draw"] = {k: v for k, v in draw.__dict__.items() if not "b2" in str(type(v)) and not k == "player_list"}
-    pickle.dump(pickle_dic, open("example_saves/" + pickle_name + ".save", "wb"))
+    pickle.dump(pickle_dic, open("saves/" + pickle_name + ".save", "wb"))
 
 
 def load_state(pickle_name):
     # get pickle
+    if type(pickle_name) is list:
+        pickle_name = pickle_name[0]
 
     if pickle_name.find("/") == -1:
-        pickle_name = "example_saves/" + pickle_name
+        pickle_name = "saves/" + pickle_name
 
     file = open(pickle_name + ".save", 'rb')
     pickle_dic = pickle.load(file)
@@ -82,8 +89,53 @@ def load_state(pickle_name):
     phys.world.contactListener = Contacter()
     phys.change_config()
 
-    return timer, phys, draw, board, msg
-    pass
+    return timer, phys, draw, board, msg, pickle_dic["blurb"]
+
+
+class Palette():
+
+    def __init__(self):
+        self.palettes = [
+            ["48bf8e", "235e31", "a1def0", "059dc5", "154975", "bf83f8", "474cd3", "3a91fb", "913e88", "f372a8",
+             "7c08c5", "baa3c6", "fb0998", "e24afc", "b1e632"],
+            ["52ef99", "0a4f4e", "62d7e1", "369094", "b9cf84", "12982d", "8ddc1c", "658114", "fda547", "7e2640",
+             "deae9e", "e65216", "f3768e", "f82387", "564147"],
+            ["0cc0aa", "115d52", "9acfd8", "545d7f", "fbacf6", "673f93", "cd49dc", "77ce3f", "841e41", "cd7b66",
+             "d5dc51", "683c00", "34f50e", "4f8522", "fec9af"],
+            ["69ef7b", "30766a", "9be4c0", "21a645", "bde267", "728e24", "bfd6fa", "711f86", "df76dd", "4e4066",
+             "8b8dbc", "2580fe", "7129ed", "fd048f", "f7d153"],
+            ["a1def0", "2f4b4e", "46ebdc", "048765", "9de866", "6e9f23", "cddb9b", "4a8bae", "5d3676", "cc9cc7",
+             "9a23b1", "658bfb", "2b3fff", "eb74c3", "af2168"],
+            ["68affc", "104b6d", "26cdca", "4e3b7e", "42f18f", "b70d61", "bce333", "b67262", "e0bfb4", "7d2b22",
+             "257950", "a18ff8", "5920af", "cf60f3", "f4d16a"],
+            ["72e5ef", "274c56", "34f199", "b12941", "a9d541", "b27373", "498e94", "ccbff5", "544793", "c86be1",
+             "67902f", "f1bb99", "6c3640", "bf711e", "34f50e"],
+            ["256676", "bde267", "972b2d", "5bef8f", "983888", "14bae1", "db11ac", "2ca559", "e88358", "737fc9",
+             "6f7d43", "c6c0fe", "2f4285", "c582ef", "84ee15"],
+            ["52ef99", "9a2a06", "4be8f9", "b12060", "a7e831", "214d4e", "c3de9b", "67577f", "f1bb99", "5920af",
+             "63a122", "d38ffd", "658b83", "f37a6b", "0ba47e"],
+            ["52ef99", "a33e12", "64baaa", "972554", "bce333", "116966", "e4bfab", "41369e", "e3a0fa", "67902f",
+             "d148d3", "61f22d", "f67a59", "7d525f", "e0c645"],
+            ["42952e", "f0ac3a", "399283", "d452a8", "e65216", "9354e7", "c218f1", "8deb71", "c4a499", "832522",
+             "6f547f", "c7ce35", "394b3f", "72e5ef", "b29ff4"],
+            ["399283", "dd9f4f", "f24325", "9b4c9d", "f228a0", "3027c8", "37d356", "c0cf66", "378811", "754819",
+             "d4c3bd", "c697f4", "e24afc", "62ebc9", "2f4d3e"]]
+
+        self.current_palette = None
+        self.block = [0, 1, 2, 4, 5, 14]
+        self.player = 6
+        self.floor = 7
+        self.select_player = 8
+        self.line = 9
+        self.joint = 10
+        self.rope = 11
+        self.point = 12
+        self.floor = 13
+
+    def set_palllette(self, no, randomise=False):
+        self.current_palette = [tuple(int(x[i:i + 2], 16) for i in (0, 2, 4)) for x in self.palettes[no]]
+        if randomise:
+            random.shuffle(self.current_palette)
 
 
 class Draw():
@@ -137,7 +189,7 @@ class Draw():
                 self.coords.append(coords)
 
         elif self.status in ["distance", "weld_pos", "rotation_pos", "wheel_draw", "wheel_move", "rectangle_draw",
-                             "circle_draw", "line_draw", "length","bullet"]:
+                             "circle_draw", "line_draw", "length", "bullet"]:
             self.locations.append([x, y])
         elif self.status in ["double_dist"] and len(self.player_list) == 1:
 
@@ -194,49 +246,57 @@ class Draw():
         if len(self.locations) == 0:
             return board
         elif len(self.locations) == 1 and not self.status in ["wheel_draw", "wheel_move", "circle_move", "line_draw",
-                                                              "double_dist", "double_dist1","bullet"]:
-            board = cv2.circle(board, tuple(self.locations[0]), 2, (240, 14, 14), -1)
+                                                              "double_dist", "double_dist1", "bullet"]:
+            board.board_copy = cv2.circle(board.board_copy, tuple(np.array(self.locations[0]) + board.translation), 2,
+                                          board.palette.current_palette[board.palette.point], -1)
         elif self.status in ["double_dist", "double_dist1"] and 1 < len(self.locations) <= 3:
-            board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
+            board.board_copy = cv2.line(board, np.array(self.locations[0])+ board.translation, np.array(self.locations[1])+ board.translation, (170, 240, 7), 2)
         elif self.status in ["double_dist1"] and len(self.locations) == 4:
-            board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
-            board = cv2.line(board, tuple(self.locations[2]), tuple(self.locations[3]), (170, 240, 7), 3)
+            board.board_copy = cv2.line(board.board_copy, np.array(self.locations[0])+ board.translation, np.array(self.locations[1])+ board.translation,
+                                        board.palette.current_palette[board.palette.line], 2)
+            board.board_copy = cv2.line(board.board_copy, np.array(self.locations[2])+ board.translation, np.array(self.locations[3])+ board.translation,
+                                        board.palette.current_palette[board.palette.line], 2)
 
         elif self.status in ["wheel_move"]:
-            board = cv2.circle(board, tuple(self.locations[-1]), self.wheel_size if self.wheel_size >= 1 else 1,
-                               (240, 14, 14), -1)
+            board.board_copy = cv2.circle(board.board_copy, tuple(np.array(self.locations[-1])+ board.translation),
+                                          self.wheel_size if self.wheel_size >= 1 else 1,
+                                          board.palette.current_palette[board.palette.line] - 1)
         elif self.status in ["wheel_draw", "circle_draw", "circle_move"]:
-            board = cv2.circle(board, tuple(self.locations[0]), self.wheel_size if self.wheel_size >= 1 else 1,
-                               (240, 14, 14), -1)
+            board.board_copy = cv2.circle(board.board_copy, tuple(np.array(self.locations[0])+ board.translation),
+                                          self.wheel_size if self.wheel_size >= 1 else 1,
+                                          board.palette.current_palette[board.palette.line], -1)
 
         elif len(self.locations) == 2 and self.status == "fire":
             # draw line for fire
-            board = cv2.arrowedLine(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
-            board = cv2.arrowedLine(board, tuple(self.locations[0]), tuple(self.locations[1]), (240, 14, 14), 2)
+            board.board_copy = cv2.arrowedLine(board.board_copy, tuple(np.array(self.locations[0])+ board.translation), tuple(np.array(self.locations[1])+ board.translation),
+                                               board.palette.current_palette[board.palette.line], 2)
 
         elif len(self.locations) >= 2 and self.status == "distance":
-            board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
-            board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[-1]), (240, 14, 14), 2)
+            board.board_copy = cv2.line(board.board_copy, tuple(np.array(self.locations[0])+ board.translation), tuple(np.array(self.locations[-1])+ board.translation),
+                                        board.palette.current_palette[board.palette.line], 2)
 
         elif len(self.locations) >= 2 and self.status == "length":
-            board = cv2.arrowedLine(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
-            board = cv2.arrowedLine(board, tuple(self.locations[0]), tuple(self.locations[-1]), (240, 14, 14), 2)
+            board.board_copy = cv2.arrowedLine(board.board_copy, tuple(np.array(self.locations[0])+ board.translation), tuple(np.array(self.locations[-1])+ board.translation),
+                                               board.palette.current_palette[board.palette.line], 2)
 
         elif len(self.locations) >= 2 and (self.status in ["poly", "frag"]):
             # used for drawing the rough shape of the polygon
             for i in range(len(self.locations) - 1):
-                # board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
-                board = cv2.line(board, tuple(self.locations[i]), tuple(self.locations[i + 1]), (240, 14, 14), 2)
+                # board = cv2.line(board, np.array(self.locations[0]), np.array(self.locations[1]), (170, 240, 7), 3)
+                board.board_copy = cv2.line(board.board_copy, tuple(np.array(self.locations[i])+ board.translation), tuple(np.array(self.locations[i + 1])+ board.translation),
+                                            board.palette.current_palette[board.palette.line], 2)
         elif self.status in ["delete", "select", "rectangle_draw", "rectangle_move"]:
-            board = cv2.rectangle(board, tuple([int(x) for x in self.locations[0]]),
-                                  tuple([int(x) for x in self.locations[-1]]), (170, 240, 7), 3)
+            board.board_copy = cv2.rectangle(board.board_copy, tuple(np.array([int(x) for x in self.locations[0]])+ board.translation),
+                                             tuple(np.array([int(x) for x in self.locations[-1]])+ board.translation),
+                                             board.palette.current_palette[board.palette.line], 2)
 
 
         elif self.status in ["line_draw"]:
             if len(self.locations) >= 2:
                 for i in range(0, len(self.locations) - 2):
-                    board = cv2.line(board, tuple(self.locations[0]), tuple(self.locations[1]), (170, 240, 7), 3)
-                    board = cv2.line(board, tuple(self.locations[i]), tuple(self.locations[i + 1]), (240, 50, 14), 2)
+                    board.board_copy = cv2.line(board.board_copy, tuple(np.array(self.locations[i])+ board.translation),
+                                                tuple(np.array(self.locations[i + 1])+ board.translation),
+                                                board.palette.current_palette[board.palette.line], 2)
 
         return board
 
@@ -250,14 +310,16 @@ class Draw():
         # draw poly
         if not len(self.player_list) == 0:
             for block in self.player_list:
-                #dont draw if player
+                # dont draw if player
                 if not block.is_player:
                     coord = get_poly_from_ob(block, 3).exterior.coords
                     for i in range(len(coord)):
                         co1 = tuple([int(x) for x in coord[i]])
                         co2 = tuple([int(x) for x in coord[(i + 1) if i != len(coord) - 1 else 0]])
-                        board = cv2.line(board, co1, co2, (170, 240, 7), 3)
-                        board = cv2.line(board, co1, co2, (240, 50, 14), 2)
+                        board.board_copy = cv2.line(board.board_copy, co1, co2,
+                                                    board.palette.current_palette[board.palette.line], 3)
+                        board.board_copy = cv2.line(board.board_copy, co1, co2,
+                                                    board.palette.current_palette[board.palette.line], 2)
 
         return board
 
@@ -296,30 +358,29 @@ class Physics():
         self.draw_objects = {"sensor": True, "ground": True, "blocks": True, "foreground": True}
         self.pause = False
         self.options = {}
-
-        for k, v in config.items():
-            self.options[k] = {}
-            for kk, vv in config[k].items():
-                self.options[k][kk] = get_config(k, kk, config)
+        self.change_config(config=config)
 
     def impulse_player(self, key):
 
         player = [bl for bl in self.block_list if bl.is_player]
         vec = None
-        currentDir = player[0].body.linearVelocity
         if len(player) >= 1 and key in [ord("a"), ord("w"), ord("s"), ord("d")]:
+
+            currentDir = player[0].body.linearVelocity
 
             if key == ord("a"):
                 move_func = player[0].body.ApplyLinearImpulse if self.options["player"]["horizontal_impulse"] else \
-                player[0].body.ApplyForce
+                    player[0].body.ApplyForce
                 vec = np.array([-self.options["player"]["horizontal_strength"], currentDir.y])
 
             elif key == ord("w"):
-                if player[0].body.userData["player_allow_impulse"] is True or not self.options["player"]["restrict_jumps"]:
+                if player[0].body.userData["player_allow_impulse"] is True or not self.options["player"][
+                    "restrict_jumps"]:
                     y = -self.options["player"]["vertical_strength"]
                 else:
                     y = currentDir.y
-                move_func = player[0].body.ApplyLinearImpulse if self.options["player"]["vertical_impulse"] else player[0].body.ApplyForce
+                move_func = player[0].body.ApplyLinearImpulse if self.options["player"]["vertical_impulse"] else player[
+                    0].body.ApplyForce
                 vec = np.array([currentDir.x, y])
 
             elif key == ord("s"):
@@ -331,7 +392,7 @@ class Physics():
 
             elif key == ord("d"):
                 move_func = player[0].body.ApplyLinearImpulse if self.options["player"]["horizontal_impulse"] else \
-                player[0].body.ApplyForce
+                    player[0].body.ApplyForce
                 vec = np.array([self.options["player"]["horizontal_strength"], currentDir.y])
 
             if not vec is None:
@@ -344,17 +405,25 @@ class Physics():
             else:
                 print("Player impulse error")
 
-    def change_config(self, config=None):
+    def change_config(self, config=None, board=None):
         if config is None:
             config = ConfigObj('config.cfg')
         for k, v in config.items():
             self.options[k] = {}
             for kk, vv in config[k].items():
                 if k in self.options.keys():
-                    self.options[k][kk] = get_config(k, kk, config)
+                    val = get_config(k, kk, config)
+                    if type(val) is dict:
+                        val = {k: v for k, v in val.items() if k != "type"}
+
+                    self.options[k][kk] = val
                     if kk == "gravity":
-                        grav_val = get_config(k, kk, config)
+                        grav_val = val
                         self.world.gravity = b2Vec2(grav_val[0], grav_val[1])
+                    elif kk == "palette":
+                        if not board is None:
+                            palette = val
+                            board.palette.set_palllette(palette)
 
     def kill_all(self, static=True):
         for i in np.arange(len(self.block_list) - 1, -1, -1):
@@ -466,7 +535,7 @@ class Physics():
                 create_type = self.world.CreateDynamicBody
 
             # create Object
-            if block_info["block"]["type"] in [1, -1, 3]:
+            if block_info["block"]["type"] in [1, -1, 3, 4]:
                 shape = [convert_to_mks(x[0], x[1]) for x in block_info["block"]["shape"]]
                 self.block_list.append(
                     Block(create_type(position=block_info["body"]["position"],
@@ -617,7 +686,7 @@ class Physics():
                 if bl.id == id:
                     return bl
 
-    def fractal_split(self, block, allow_another=True):
+    def fractal_split(self, block, allow_another=True, convert=False):
 
         if not type(block) == list:
             block = [block]
@@ -642,9 +711,14 @@ class Physics():
                 poly = Polygon(con)
                 new_con = [(int(x[0] - poly.centroid.x), int(x[1] - poly.centroid.y)) for x in con]
 
+                if convert:
+                    poly_type = 1
+                else:
+                    poly_type = -1
+
                 if bl.static:
                     # complete.append(not create_block(pos=(poly.centroid.x,poly.centroid.y), forc=0, out=0, player=1, shape=con))
-                    self.create_block(pos=(poly.centroid.x, poly.centroid.y), poly_type=-1, shape=new_con)
+                    self.create_block(pos=(poly.centroid.x, poly.centroid.y), poly_type=poly_type, shape=new_con)
                 else:
                     self.create_block(pos=(poly.centroid.x, poly.centroid.y), poly_type=1, shape=new_con,
                                       draw_static=True)
@@ -670,7 +744,7 @@ class Physics():
 
             self.delete(bl)
 
-    def fractal_create(self, shape, static=True):
+    def fractal_create(self, shape, static=True, convert=False):
 
         shape = shape[:-1]
         if len(shape) <= 4:
@@ -684,14 +758,18 @@ class Physics():
                 # complete.append(not create_block(pos=(poly.centroid.x,poly.centroid.y), forc=0, out=0, player=1, shape=con))
                 self.create_block(pos=(poly.centroid.x, poly.centroid.y), poly_type=1, shape=new_con)
             else:
-                self.create_block(pos=(poly.centroid.x, poly.centroid.y), poly_type=-1, shape=new_con,
+                if convert:
+                    poly_type = 1
+                else:
+                    poly_type = -1
+                self.create_block(pos=(poly.centroid.x, poly.centroid.y), poly_type=poly_type, shape=new_con,
                                   draw_static=True)
 
-    def fractal_block(self, ob, create=True, static=True, allow_another=True):
+    def fractal_block(self, ob, create=True, static=True, allow_another=True, convert=False):
         if create is True:
-            self.fractal_create(ob, static)
+            self.fractal_create(ob, static, convert=convert)
         elif create is False:
-            self.fractal_split(ob, allow_another=allow_another)
+            self.fractal_split(ob, allow_another=allow_another, convert=convert)
 
     def get_rand_val(self, main, sub):
 
@@ -743,9 +821,10 @@ class Physics():
         # get the type
 
         if poly_type is None:
-            types = [1, 2, 3]
+            types = [1, 2, 3, 4]
             player_options = [k for k, v in self.options["blocks_out"]["player_type"].items() if v == True]
-            poly_type = random.choice([types[i] for i, x in enumerate(player_options)])
+            poly_type = random.choice(
+                [list(self.options["blocks_out"]["player_type"].keys()).index(x) + 1 for x in player_options])
 
         # get the shape of the item
 
@@ -762,6 +841,10 @@ class Physics():
                 shape = [[0, 0], [0, int(size * (random.randint(50, 150) / 100))],
                          [int(size * (random.randint(50, 150) / 100)), int(size * (random.randint(50, 150) / 100))],
                          [int(size * (random.randint(50, 150) / 100)), 0]]
+
+            elif poly_type == 4:
+
+                shape = [[0, -int(size / 2)], [-size / 2, size / 2], [size / 2, size / 2]]
 
         if not type(shape) == int and not type(shape) == float:
             for x, y in shape:
@@ -782,6 +865,7 @@ class Physics():
 
         # if boarder etc
         if poly_type == -1:
+
             try:
                 self.block_list.append(
                     Block(create_type(position=position,
@@ -807,7 +891,7 @@ class Physics():
                                      fixtures=b2FixtureDef(
                                          shape=b2CircleShape(radius=rad),
                                          density=density))
-                         , set_sprite=set_sprite, poly_type=poly_type)
+                         , set_sprite=set_sprite, poly_type=poly_type, static_shape=True)
                 )
             except AssertionError:
                 print("circle creation error, check me")
@@ -817,11 +901,11 @@ class Physics():
             self.block_list[-1].body.fixtures[0].restitution = self.options["static_blocks"]["rest"]
             self.block_list[-1].body.fixtures[0].friction = self.options["static_blocks"]["friction"]
 
-        # if dynamic polygon
-        elif poly_type == 1 or poly_type == 3:
-            try:
-                # shape = [(x[0] + position[0],x[1]+ position[1]) for x in shapes]
 
+        # if dynamic polygon
+        elif poly_type == 1 or poly_type == 3 or poly_type == 4:
+            try:
+                # try creating block
                 self.block_list.append(
                     Block(create_type(position=position,
                                       fixtures=b2FixtureDef(
@@ -829,6 +913,12 @@ class Physics():
                                           density=density))
                           , False, set_sprite=set_sprite, poly_type=poly_type)
                 )
+
+                # check if config says to set sprite and load if so
+                if self.options["squares"]["sprite_on"]:
+                    self.block_list[-1].sprite = self.options["squares"]["sprite"]
+                    self.block_list[-1].set_sprite()
+
             except AssertionError as e:
                 print("poly creation error, check me")
                 # for when blocks are too small
@@ -836,7 +926,9 @@ class Physics():
 
         # if circle
         elif poly_type == 2:
+
             try:
+                # try creating block
                 rad = convert_to_mks(shape)
                 self.block_list.append(
                     Ball(create_type(position=position,
@@ -845,6 +937,10 @@ class Physics():
                                          density=density))
                          , set_sprite=set_sprite, poly_type=poly_type)
                 )
+                # check if config says to set sprite and load if so
+                if self.options["balls"]["sprite_on"]:
+                    self.block_list[-1].sprite = self.options["balls"]["sprite"]
+                    self.block_list[-1].set_sprite()
             except AssertionError:
                 print("circle creation error, check me")
                 # for when blocks are too small
@@ -853,7 +949,7 @@ class Physics():
         self.block_list[-1].body.fixtures[0].restitution = rest
         self.block_list[-1].body.fixtures[0].density = density
         self.block_list[-1].body.fixtures[0].friction = friction
-        self.block_list[-1].draw_me = draw
+        self.block_list[-1].body.fixedRotation = self.options["blocks_out"]["fixed_rotation"]
 
         if foreground:
             self.block_list[-1].foreground = True
@@ -871,7 +967,11 @@ class Physics():
             bl = self.block_list[i]
             if bl.body.userData["bullet_actions"] == "hit":
                 if self.options["player"]["bullet_fragment"]:
-                    self.fractal_block(bl, False)
+                    if bl.type < 0:
+                        convert = True
+                    else:
+                        convert = False
+                    self.fractal_block(bl, False, convert=True)
                 else:
                     self.delete(bl)
 
@@ -884,6 +984,18 @@ class Physics():
         :param board: np array
         :return:
         """
+
+        #check if the coord translation needs doing
+        if board.x_trans_do == "up":
+            board.translation[0] += 4
+        elif board.x_trans_do == "down":
+            board.translation[0] -= 4
+
+
+        if board.y_trans_do == "up":
+            board.translation[1] += 4
+        elif board.y_trans_do == "down":
+            board.translation[1] -= 4
 
         # split sensors and blocks
         floor = [bl for bl in self.block_list if
@@ -950,33 +1062,33 @@ class Physics():
         for jn in self.world.joints:
             if type(jn) == b2WeldJoint or type(jn) == b2RevoluteJoint:
                 an = convert_from_mks(jn.anchorA)
-                if type(jn) == b2WeldJoint:
-                    col = (233, 23, 100)
-                else:
-                    col = (150, 23, 240)
+                col = board.palette.current_palette[board.palette.point]
 
-                board = cv2.circle(board, tuple([int(x) for x in an]), 1, col, -1)
+                board.board_copy = cv2.circle(board.board_copy, tuple(np.array([int(x) for x in an])+board.translation), 1, col, -1)
             elif type(jn) == b2PulleyJoint:
-                col = (50, 214, 4)
+                col = board.palette.current_palette[board.palette.joint]
                 startA = convert_from_mks(jn.anchorA.x, jn.anchorA.y)
                 endA = convert_from_mks(jn.groundAnchorA.x, jn.groundAnchorA.y)
 
                 startB = convert_from_mks(jn.anchorB.x, jn.anchorB.y)
                 endB = convert_from_mks(jn.groundAnchorB.x, jn.groundAnchorB.y)
 
-                board = cv2.line(board, tuple([int(x) for x in startA]), tuple([int(x) for x in endA]), col, 2)
-                board = cv2.line(board, tuple([int(x) for x in startB]), tuple([int(x) for x in endB]), col, 2)
+                board.board_copy = cv2.line(board.board_copy, tuple(np.array([int(x) for x in startA])+board.translation),
+                                            tuple(np.array([int(x) for x in endA])+board.translation), col, 2)
+                board.board_copy = cv2.line(board.board_copy, tuple(np.array([int(x) for x in startB])+board.translation),
+                                            tuple(np.array([int(x) for x in endB])+board.translation), col, 2)
 
             else:
                 if type(jn) == b2RopeJoint:
-                    col = (23, 233, 123)
+                    col = board.palette.current_palette[board.palette.rope]
                 else:
-                    col = (50, 200, 110)
+                    col = board.palette.current_palette[board.palette.rope]
 
                 start = convert_from_mks(jn.anchorA.x, jn.anchorA.y)
                 end = convert_from_mks(jn.anchorB.x, jn.anchorB.y)
 
-                board = cv2.line(board, tuple([int(x) for x in start]), tuple([int(x) for x in end]), col, 2)
+                board.board_copy = cv2.line(board.board_copy, tuple(np.array([int(x) for x in start])+board.translation),
+                                            tuple([int(x) for x in end]), col, 2)
 
         return board
 
@@ -1012,6 +1124,11 @@ class Physics():
         a.body.active = True
         a.body.awake = True
 
+    def create_prismatic(self, a, b, vector, anchor, distance):
+
+        self.world.CreatePrismaticJoint(bodyA=a.body, bodyB=b.body, anchor=convert_to_mks(anchor[0], anchor[1]),
+                                        axis=vector, enableLimit=True, upperTranslation=convert_to_mks(distance))
+
     def create_pulley(self, a, b, lines):
         lines = [convert_to_mks(x[0], x[1]) for x in lines]
         self.world.CreatePulleyJoint(bodyA=a.body,
@@ -1025,6 +1142,81 @@ class Physics():
         # maxLengthB=calculateDistance(lines[2][0], lines[2][1], lines[3][0], lines[3][1]))
 
     def create_chain(self, a, b, lines, stretchy=False):
+        last_ob = 0
+        end = False
+
+        ###FROM STACKOVERFLOW
+        ## https://stackoverflow.com/questions/62990029/how-to-get-equally-spaced-points-on-a-line-in-shapely/62994304#62994304
+        line = LineString(lines)
+        line = line.simplify(2)
+        # or to get the distances closest to the desired one:
+        # n = round(line.length / desired_distance_delta)
+
+        distance_delta = 25
+        distances = np.arange(0, line.length, distance_delta)
+        points = [line.interpolate(distance) for distance in distances]
+        #multipoint = unary_union(points)
+        lines_new = [(int(p.x), int(p.y)) for p in points]
+        first_block = None
+        for i in np.arange(0,len(lines_new)):
+
+            do_joint = True
+
+            line1 = np.array(lines_new[i])
+
+            if i != len(lines_new)-1:
+                line2 = np.array(lines_new[i+1])
+                angle = np.deg2rad(get_angle(line1, line2))
+                # angle = get_angle(line1, line2)
+                shape = [[-15, -2], [15, -2], [15, 2], [-15, 2]]
+                self.create_block(pos=np.mean([line1,line2],axis=0), draw=True, shape=shape, poly_type=1, density=1, friction=0.1, rest=0)
+                if first_block is None:
+                    first_block = self.block_list[-1]
+                self.block_list[-1].body.angle = angle
+
+            if i == 0:
+                if a is None:
+                    do_joint = False
+                else:
+                    blockA = a.body
+
+            else:
+                #on last block select the last else select the second from last
+                blockA = self.block_list[-1 if i == len(lines_new)-1 else -2].body
+
+            #if end rung of rope then select bodyB as the last block else normal last block
+            if i >= len(lines_new) - 1:
+                if b is None:
+                    if calculateDistance(lines_new[-1][0],lines_new[-1][1],lines_new[0][0],lines_new[0][1]) < 15:
+                        blockB = first_block.body
+                    else:
+                        do_joint = False
+                else:
+                    blockB = b.body
+                    end = True
+            else:
+                blockB = self.block_list[-1].body
+
+            if do_joint:
+
+
+                self.world.CreateRevoluteJoint(bodyA=blockA,
+                                               bodyB=blockB,
+                                               anchor=convert_to_mks(line1[0], line1[1]),
+                                               collideConnected=False)
+                #self.world.CreateDistanceJoint(bodyA=blockA,
+                                               # bodyB=blockB,
+                                               # anchorA=convert_to_mks(center_point[0], center_point[1]),
+                                               # anchorB=convert_to_mks(center_point[0], center_point[1]),
+                                               # collideConnected=False)
+                #self.world.joints[-1].frequencyHz = 1/20
+                #self.world.joints[-1].frequency = 1 / 20
+                #self.world.joints[-1].dampingRatio = 2
+
+            if end:
+                return
+
+    def create_chainish_joint(self, a, b, lines, stretchy=False):
         last_ob = 0
         end = False
 
@@ -1174,10 +1366,11 @@ class Physics():
 
         """
         goals = 0
-        h, w, _ = board.shape
+        h, w, _ = board.board_copy.shape
 
         for bl in self.block_list:
             if bl.current_position != [] and bl.static == False:
+
                 x = [x[0] for x in bl.current_position]
                 y = [x[1] for x in bl.current_position]
 
@@ -1198,19 +1391,33 @@ class Physics():
         for bl in self.block_list:
             if bl.body.userData["goal"] == True:
                 goals += 1
-                self.delete(bl)
+                action = list({k: v for k, v in self.options["sensors"]["goal_hit"].items() if
+                               v == True and k.find("type") == -1}.keys())[0]
+                # how to deal with the goal hit
+                if action == "reset_on_all":
+                    board.reset = True
+                elif action == "reset_on_player_only" and bl.is_player:
+                    board.reset = True
+                else:
+                    self.delete(bl)
         return goals
 
 
 class Ball():
 
-    def __init__(self, body, set_sprite=False, sprite=None, draw=True, poly_type=None):
+    def __init__(self, body, set_sprite=False, sprite=None, draw=True, poly_type=None, static_shape=False):
         self.body = body
-        self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False, "player_allow_impulse": True, "bullet_actions":None}
+        self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False,
+                              "player_allow_impulse": True, "bullet_actions": None, "bullets_destory_ground": False}
         self.type = poly_type
         self.pos = None
         self.current_position = []
-        self.colour = get_random_col()
+        self.translated_position = []
+        if static_shape:
+            self.colour = 10
+        else:
+            self.colour = random.choice([0, 1, 2, 4, 5, 14])
+
         self.active = True
         self.center = None
         self.radius = int(convert_from_mks(self.body.fixtures[0].shape.radius))
@@ -1233,6 +1440,7 @@ class Ball():
         self.mask = None
         self.inv_mask = None
         self.sprite_on = False
+
         if set_sprite is True:
             self.set_sprite()
 
@@ -1247,12 +1455,20 @@ class Ball():
         return str
 
     def get_poly(self):
-        return get_poly_from_ob(self,3)
+        return get_poly_from_ob(self, 3)
 
-    def get_current_pos(self):
-        self.center = convert_from_mks((self.body.transform * self.body.localCenter).x,
-                                       (self.body.transform * self.body.localCenter).y)
+    def get_current_pos(self,board):
+        self.center = np.array(convert_from_mks((self.body.transform * self.body.localCenter).x,
+                                       (self.body.transform * self.body.localCenter).y))
         self.current_position = [self.center]
+        self.translated_position = [self.center+board.translation]
+
+        if self.translated_position[0][0] < 0 or self.translated_position[0][0] > board.board.shape[1]:
+            return False
+        elif self.translated_position[0][1] < 0 or self.translated_position[0][1] > board.board.shape[0]:
+            return False
+        else:
+            return True
 
     def set_sprite(self, force=False):
         if not self.sprite is None:
@@ -1288,83 +1504,94 @@ class Ball():
 
     def draw(self, board, force_draw=False):
 
-        self.get_current_pos()
+        ok_to_draw = self.get_current_pos(board
+                                          )
+        if ok_to_draw:
+            if self.sprite_on and type(self.sprite) != None:
 
-        if self.sprite_on and type(self.sprite) != None:
+                degrees = np.rad2deg(self.body.angle)
+                if degrees != 0:
+                    sprite = rotate(self.sprite.copy().astype(np.uint8), int(degrees * -1), reshape=False)
+                else:
+                    sprite = self.sprite.copy()
 
-            degrees = np.rad2deg(self.body.angle)
-            if degrees != 0:
-                sprite = rotate(self.sprite.copy().astype(np.uint8), int(degrees * -1), reshape=False)
+                mask = self.inv_mask.copy()
+
+                # x_start = int(self.center[0]) - self.radius
+                # y_start = int(self.center[1]) - self.radius
+                # x_end = x_start + (self.radius*2)
+                # y_end = y_start + (self.radius*2)
+
+                # get shape
+                height, width, _ = sprite.shape
+                x_start = int(self.center[0] - int(width / 2))
+                y_start = int(self.center[1] - int(height / 2))
+                x_end = int(x_start + (width))
+                y_end = int(y_start + (height))
+
+                # if out of bounds return not drawn
+                if y_start > board.board_copy.shape[0] or x_start > board.board_copy.shape[1] or x_end < 0 or y_end < 0:
+                    return board.board_copy
+
+                if y_start < 0:
+                    val = abs(y_start)
+                    sprite = sprite[val:, :]
+                    mask = mask[val:, :]
+                    y_start = 0
+
+                if x_start < 0:
+                    val = abs(x_start)
+                    sprite = sprite[:, val:]
+                    mask = mask[:, val:]
+                    x_start = 0
+
+                if y_end > board.board_copy.shape[0]:
+                    val = abs(y_end - board.board_copy.shape[0])
+                    sprite = sprite[:sprite.shape[0] - val, :]
+                    mask = mask[:sprite.shape[0], :]
+                    y_end = board.board_copy.shape[0]
+
+                if x_end > board.board_copy.shape[1]:
+                    val = abs(x_end - board.shape[1])
+                    sprite = sprite[:, :sprite.shape[1] - val]
+                    mask = mask[:, :sprite.shape[1]]
+                    x_end = board.board_copy.shape[1]
+
+                board.board_copy[y_start:y_end, x_start:x_end, :] = (board.board_copy[y_start:y_end, x_start:x_end,
+                                                                     :] * mask) + sprite
+                # board[y_start:y_end, x_start:x_end] = board[y_start:y_end, x_start:x_end] * (1 - mask) + (img * mask)
             else:
-                sprite = self.sprite.copy()
+                try:
+                    if type(self.colour) is tuple:
+                        colour = self.colour
+                    else:
+                        colour = board.palette.current_palette[self.colour]
 
-            mask = self.inv_mask.copy()
-
-            # x_start = int(self.center[0]) - self.radius
-            # y_start = int(self.center[1]) - self.radius
-            # x_end = x_start + (self.radius*2)
-            # y_end = y_start + (self.radius*2)
-
-            # get shape
-            height, width, _ = sprite.shape
-            x_start = int(self.center[0] - int(width / 2))
-            y_start = int(self.center[1] - int(height / 2))
-            x_end = int(x_start + (width))
-            y_end = int(y_start + (height))
-
-            # if out of bounds return not drawn
-            if y_start > board.shape[0] or x_start > board.shape[1] or x_end < 0 or y_end < 0:
-                return board
-
-            if y_start < 0:
-                val = abs(y_start)
-                sprite = sprite[val:, :]
-                mask = mask[val:, :]
-                y_start = 0
-
-            if x_start < 0:
-                val = abs(x_start)
-                sprite = sprite[:, val:]
-                mask = mask[:, val:]
-                x_start = 0
-
-            if y_end > board.shape[0]:
-                val = abs(y_end - board.shape[0])
-                sprite = sprite[:sprite.shape[0] - val, :]
-                mask = mask[:sprite.shape[0], :]
-                y_end = board.shape[0]
-
-            if x_end > board.shape[1]:
-                val = abs(x_end - board.shape[1])
-                sprite = sprite[:, :sprite.shape[1] - val]
-                mask = mask[:, :sprite.shape[1]]
-                x_end = board.shape[1]
-
-            board[y_start:y_end, x_start:x_end, :] = (board[y_start:y_end, x_start:x_end, :] * mask) + sprite
-            # board[y_start:y_end, x_start:x_end] = board[y_start:y_end, x_start:x_end] * (1 - mask) + (img * mask)
+                    board.board_copy = cv2.circle(board.board_copy, tuple(np.array([int(x) for x in self.translated_position[0]])), int(self.radius),
+                                                  colour,
+                                                  thickness=-1)  # .astype(np.uint8)
+                except cv2.error:
+                    # error in drawing circle size
+                    print("Circle draw error")
+                    pass
+            if self.is_player:
+                board.board_copy = cv2.circle(board.board_copy, tuple(np.array([int(x) for x in  self.translated_position[0]])), int(self.radius),
+                                              board.palette.current_palette[board.palette.player],
+                                              thickness=2)
+            return board
         else:
-            try:
-                board = cv2.circle(board, tuple([int(x) for x in self.center]), int(self.radius), self.colour,
-                                   thickness=-1)  # .astype(np.uint8)
-            except cv2.error:
-                # error in drawing circle size
-                print("Circle draw error")
-                pass
-        if self.is_player:
-            board = cv2.circle(board, tuple([int(x) for x in self.center]), int(self.radius), (143, 255, 145),
-                               thickness=2)
-        return board
-
+            return board
 
 class Block():
 
     def __init__(self, body, static_shape=True, set_sprite=False, sprite=None, draw_static=True, poly_type=None):
         self.body = body
-        self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False, "player_allow_impulse": True, "bullet_actions":None}
+        self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False,
+                              "player_allow_impulse": True, "bullet_actions": None, "bullets_destory_ground": False}
         self.type = poly_type
         self.pos = None
         self.current_position = []
-
+        self.translated_position = []
         self.static = static_shape
 
         self.shape = [convert_from_mks(x, y) for x, y in self.body.fixtures[0].shape.vertices]
@@ -1396,9 +1623,9 @@ class Block():
             self.set_sprite()
 
         if static_shape:
-            self.colour = [234, 123, 23]
+            self.colour = 10
         else:
-            self.colour = get_random_col()
+            self.colour = random.choice([0, 1, 2, 4, 5, 14])
 
         self.active = True
 
@@ -1411,28 +1638,27 @@ class Block():
             str += f"Joint: {type(x.joint)} bodyA id {x.joint.bodyA.userData['ob'].id} oldId {x.joint.bodyA.userData['ob'].old_id} bodyB id {x.joint.bodyB.userData['ob'].id} oldId {x.joint.bodyB.userData['ob'].old_id}\n"
 
         return str
+
     def get_poly(self):
-        return get_poly_from_ob(self,3)
-    def set_as_bullet(self,vector,id):
+        return get_poly_from_ob(self, 3)
+
+    def set_as_bullet(self, vector, id, destroy_ground):
         self.bullet_creator = id
-        #set the block as a bullet for colision detection
+        # set the block as a bullet for colision detection
         self.bullet = True
         self.colour = (255, 17, 0)
-        #set as a sensor
+        # set as a sensor
         self.body.fixtures[0].sensor = True
-
-        #turn off the gravity so it just keeps going with no effect on the physics
+        self.body.userData["bullets_destory_ground"] = destroy_ground
+        # turn off the gravity so it just keeps going with no effect on the physics
         self.body.gravityScale = 0
 
-        #impulse the bullet
-        if vector is None:
-            vector
-        try:
-            self.body.ApplyLinearImpulse(vector*self.body.mass,self.body.worldCenter,wake=True)
-        except:
-            pass
-        #stop rotation
+        # impulse the bullet
+        self.body.ApplyLinearImpulse(vector * self.body.mass, self.body.worldCenter, wake=True)
+        self.body.bullet = True
+        # stop rotation
         self.body.fixedRotation = True
+
     def boost_block(self):
 
         for impul in self.body.userData["impulses"]:
@@ -1444,14 +1670,22 @@ class Block():
         self.body.userData["impulses"] = []
         self.body.userData["forces"] = []
 
-    def get_current_pos(self):
+    def get_current_pos(self, board):
 
         shapes = [(self.body.transform * v) for v in self.body.fixtures[0].shape.vertices]
         shapes = [(convert_from_mks(val[0], val[1])) for val in shapes]
-        shapes = [(v[0], v[1]) for v in shapes]
+
+        self.translated_position = np.array(shapes) + board.translation
         self.current_position = np.array(shapes)
         self.center = convert_from_mks((self.body.transform * self.body.localCenter).x,
                                        (self.body.transform * self.body.localCenter).y)
+
+        if max([x[0] for x in self.translated_position ]) < 0 or min([x[0] for x in self.translated_position ]) > board.board.shape[1]:
+            return False
+        elif max([x[1] for x in self.translated_position ]) < 0 or min([x[1] for x in self.translated_position ]) > board.board.shape[0]:
+            return False
+        else:
+            return True
 
     def set_sprite(self, force=False):
         if not self.sprite is None:
@@ -1479,83 +1713,115 @@ class Block():
         if self.draw_me is False:
             return board
         elif (self.draw_static is True and self.static) or self.static is False:
-            self.get_current_pos()
 
-            if self.sprite_on and type(self.sprite) != None:
+            on_screen = self.get_current_pos(board)
+            if on_screen:
+                if self.sprite_on and type(self.sprite) != None:
 
-                center = self.center
+                    center = self.center
 
-                degrees = np.rad2deg(self.body.angle * -1)
+                    degrees = np.rad2deg(self.body.angle * -1)
 
-                if degrees != 0:
-                    sprite = rotate(self.sprite.copy().astype(np.uint8), int(degrees), reshape=True)
-                    mask = rotate(self.mask.copy(), int(degrees), reshape=True, mode="constant", cval=0)
+                    if degrees != 0:
+                        sprite = rotate(self.sprite.copy().astype(np.uint8), int(degrees), reshape=True)
+                        mask = rotate(self.mask.copy(), int(degrees), reshape=True, mode="constant", cval=0)
 
-                    sprite = sprite * mask
+                        sprite = sprite * mask
 
+                    else:
+                        sprite = self.sprite.copy()
+                        mask = self.mask.copy()
+
+                    # get shape
+                    height, width, _ = sprite.shape
+                    x_start = int(center[0] - (width / 2))
+                    y_start = int(center[1] - (height / 2))
+                    x_end = int(x_start + (width))
+                    y_end = int(y_start + (height))
+
+                    # if out of bounds return not drawn
+                    if y_start > board.board_copy.shape[0] or x_start > board.board_copy.shape[1] or x_end < 0 or y_end < 0:
+                        return board
+
+                    if y_start < 0:
+                        val = abs(y_start)
+                        sprite = sprite[val:, :]
+                        mask = mask[val:, :]
+                        y_start = 0
+
+                    if x_start < 0:
+                        val = abs(x_start)
+                        sprite = sprite[:, val:]
+                        mask = mask[:, val:]
+                        x_start = 0
+
+                    if y_end > board.board_copy.shape[0]:
+                        val = abs(y_end - board.board_copy.shape[0])
+                        sprite = sprite[:sprite.shape[0] - val, :]
+                        mask = mask[:sprite.shape[0], :]
+                        y_end = board.board_copy.shape[0]
+
+                    if x_end > board.board_copy.shape[1]:
+                        val = abs(x_end - board.board_copy.shape[1])
+                        sprite = sprite[:, :sprite.shape[1] - val]
+                        mask = mask[:, :sprite.shape[1]]
+                        x_end = board.board_copy.shape[1]
+
+                    board.board_copy[y_start:y_end, x_start:x_end, :] = (board.board_copy[y_start:y_end, x_start:x_end,
+                                                                         :] * (1 - mask)) + sprite
+                    # board[y_start:y_end, x_start:x_end] = board[y_start:y_end, x_start:x_end] * (1 - mask) + (img * mask)
                 else:
-                    sprite = self.sprite.copy()
-                    mask = self.mask.copy()
 
-                # get shape
-                height, width, _ = sprite.shape
-                x_start = int(center[0] - (width / 2))
-                y_start = int(center[1] - (height / 2))
-                x_end = int(x_start + (width))
-                y_end = int(y_start + (height))
+                    if type(self.colour) is tuple:
+                        colour = self.colour
+                    else:
+                        colour = board.palette.current_palette[self.colour]
 
-                # if out of bounds return not drawn
-                if y_start > board.shape[0] or x_start > board.shape[1] or x_end < 0 or y_end < 0:
-                    return board
+                    board.board_copy = cv2.fillConvexPoly(board.board_copy, self.translated_position.astype(np.int32), colour)
 
-                if y_start < 0:
-                    val = abs(y_start)
-                    sprite = sprite[val:, :]
-                    mask = mask[val:, :]
-                    y_start = 0
+                if self.is_player:
 
-                if x_start < 0:
-                    val = abs(y_start)
-                    sprite = sprite[:, val:]
-                    mask = mask[:, val:]
-                    x_start = 0
+                    for i in range(len(self.translated_position)):
+                        if i < len(self.translated_position)-1:
+                            point1 = tuple([int(x) for x in self.translated_position[i]])
+                            point2 =tuple([int(x) for x in self.translated_position[i + 1]])
+                        else:
+                            point1 = tuple([int(x) for x in self.translated_position[-1]])
+                            point2 = tuple([int(x) for x in self.translated_position[0]])
 
-                if y_end > board.shape[0]:
-                    val = abs(y_end - board.shape[0])
-                    sprite = sprite[:sprite.shape[0] - val, :]
-                    mask = mask[:sprite.shape[0], :]
-                    y_end = board.shape[0]
+                        board.board_copy = cv2.line(board.board_copy,point1 ,point2,board.palette.current_palette[board.palette.player], thickness=2)
 
-                if x_end > board.shape[1]:
-                    val = abs(x_end - board.shape[1])
-                    sprite = sprite[:, :sprite.shape[1] - val]
-                    mask = mask[:, :sprite.shape[1]]
-                    x_end = board.shape[1]
-
-                board[y_start:y_end, x_start:x_end, :] = (board[y_start:y_end, x_start:x_end, :] * (1 - mask)) + sprite
-                # board[y_start:y_end, x_start:x_end] = board[y_start:y_end, x_start:x_end] * (1 - mask) + (img * mask)
+                return board
             else:
-                board = cv2.fillConvexPoly(board, self.current_position.astype(np.int32), self.colour)
-
-            if self.is_player:
-                for i in range(len(self.current_position) - 1):
-                    board = cv2.line(board, tuple([int(x) for x in self.current_position[i]]),
-                                     tuple([int(x) for x in self.current_position[i + 1]]), (143, 255, 145),
-                                     thickness=2)
-
-                board = cv2.line(board, tuple([int(x) for x in self.current_position[-1]]),
-                                 tuple([int(x) for x in self.current_position[0]]), (143, 255, 145), thickness=2)
-
-            return board
+                return board
         else:
             return board
 
 
 class Board():
     def __init__(self):
+        self.board_name = None
         self.board = None
         self.board_front = None
+        self.board_copy = None
         self.run = True
+        self.palette = None
+        self.reset = False
+        self.translation = np.array([0,0])
+        self.x_trans_do = None
+        self.y_trans_do = None
+
+    def reset_me(self, timer, phys, board, draw, msg, force=False):
+        if self.reset or force:
+            if self.board_name == "base":
+                timer, phys, board, draw, msg = load(self.board.shape[0], self.board.shape[1])
+            else:
+                timer, phys, draw, board, msg, blurb = load_state(self.board_name)
+
+        return timer, phys, board, draw, msg
+
+    def copy_board(self):
+        self.board_copy = self.board.copy()
 
     def load_blank(self, x, y):
         "Used for a blank board"
@@ -1712,11 +1978,13 @@ class Messenger:
 
     def draw_message(self, board, pause):
         self.display_pannel = cv2.putText(self.display_pannel_pause.copy(),
-                                          ("Pause Off" if pause == True else "Pause On"), (board.shape[1] - 100, 20),
+                                          ("Pause Off" if pause == True else "Pause On"),
+                                          (board.board_copy.shape[1] - 100, 20),
                                           cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                                           (50, 50, 50), 1, bottomLeftOrigin=False)
 
-        return np.vstack((board, self.display_pannel))
+        board.board_copy = np.vstack((board.board_copy, self.display_pannel))
+        return board
 
 
 class Contacter(b2ContactListener):
@@ -1758,11 +2026,11 @@ class Contacter(b2ContactListener):
         #     return
 
         if "ob" in contact.fixtureA.body.userData and "ob" in contact.fixtureB.body.userData:
-            #check for if off ground and allowed another jump
+            # check for if off ground and allowed another jump
             if contact.fixtureA.body.userData["ob"].is_player and contact.fixtureB.body.userData["ob"].static:
                 contact.fixtureA.body.userData["player_allow_impulse"] = True
 
-            #is bullet and has hit dynamic block?
+            # is bullet and has hit dynamic block?
             is_bullet = contact.fixtureA.body.userData["ob"].bullet
             ignore_id = contact.fixtureA.body.userData["ob"].bullet_creator
             contact_id = contact.fixtureB.body.userData["ob"].id
@@ -1772,11 +2040,12 @@ class Contacter(b2ContactListener):
                 if contact.fixtureB.body.userData["ob"].get_poly().area > 200:
                     contact.fixtureA.body.userData["bullet_actions"] = "kill"
 
-                if not contact.fixtureB.body.userData["ob"].static:
+                if not contact.fixtureB.body.userData["ob"].static or contact.fixtureA.body.userData[
+                    "bullets_destory_ground"]:
                     contact.fixtureB.body.userData["bullet_actions"] = "hit"
 
         if "ob" in contact.fixtureB.body.userData and "ob" in contact.fixtureA.body.userData:
-            #check for if off ground and allowed another jump
+            # check for if off ground and allowed another jump
             if contact.fixtureB.body.userData["ob"].is_player and contact.fixtureA.body.userData["ob"].static:
                 contact.fixtureB.body.userData["player_allow_impulse"] = True
 
@@ -1786,11 +2055,12 @@ class Contacter(b2ContactListener):
             contact_id = contact.fixtureA.body.userData["ob"].id
 
             if is_bullet and ignore_id != contact_id:
-                #check if small then dont destroy the bullet
+                # check if small then dont destroy the bullet
                 if contact.fixtureA.body.userData["ob"].get_poly().area > 200:
                     contact.fixtureB.body.userData["bullet_actions"] = "kill"
 
-                if not contact.fixtureA.body.userData["ob"].static:
+                if not contact.fixtureA.body.userData["ob"].static or contact.fixtureB.body.userData[
+                    "bullets_destory_ground"]:
                     contact.fixtureA.body.userData["bullet_actions"] = "hit"
 
     def PreSolve(self, contact, impulse):

@@ -30,6 +30,7 @@ class SelectType(Enum):
     player_distance = "16"
     bullet_direction = "17"
     null = "-1"
+    line_join2 = "18"
 
 def rotation(draw,phys,event,x,y,type):
     if type[1:] == SelectType.line_join.value:
@@ -448,6 +449,19 @@ def player_draw_click_or_circle(draw,phys,event,x,y,type,allow_clicked=True,log_
                 draw.status = "circle_move"
                 draw.locations = [[x, y]]
 
+        elif type[1:] == SelectType.line_join.value:
+
+            if event == cv2.EVENT_LBUTTONDOWN:
+                draw.log_point(x, y, "line_draw")
+
+            elif event == cv2.EVENT_MOUSEMOVE and draw.status == "line_draw":
+                if calculateDistance(draw.locations[0][0], draw.locations[0][1], x, y) > 6:
+                    draw.log_point(x, y, "line_draw")
+
+            elif event == cv2.EVENT_LBUTTONUP:
+                draw.log_point(x, y, "line_draw")
+                draw, phys, True
+            return draw,phys,False
 
         elif type[1:] == SelectType.line_join.value:
 

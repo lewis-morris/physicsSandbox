@@ -15,6 +15,7 @@ from objects import load_state, load
 sg.theme('Light Blue 6')
 sg.SetOptions(font="TkHeadingFont")
 
+
 def getVariableName(variable):
     for k, v in globals().copy().items():
         if v == variable:
@@ -31,7 +32,8 @@ def get_toolbar():
     creation = {"Spawn": ["z", None, "Spawn a player from the predefined spawn point (z)"],
                 "Set Spawn": ["v", SelectType.null, "Set spawn point on click (v)"],
                 "Choose Player": ["[", SelectType.null, "Select player to be controlled by the keyboard arrows ([)"],
-                "Fire Bullet": ["]", SelectType.null, "Fire a bullet from the player center to mouse click position (])"],
+                "Fire Bullet": ["]", SelectType.null,
+                                "Fire a bullet from the player center to mouse click position (])"],
                 "Remove Blocks": ["e", SelectType.null, "Remove all dynamic blocks from scene (e)"],
                 "Frag All": ["h", SelectType.null, "Fragment all blocks (h)"],
                 "Delete": ["x", SelectType.select, "Delete a player with mouse - click or select (x)"],
@@ -60,11 +62,12 @@ def get_toolbar():
                "Ground Circle": ["g", SelectType.circle,
                                  "Draw a static floor circle that reacts to physics (g toggle)"],
 
-               "Fore Poly": ["b", SelectType.draw, "Draw a static foreground polygon sits infront of all other elements (b toggle)"],
+               "Fore Poly": ["b", SelectType.draw,
+                             "Draw a static foreground polygon sits infront of all other elements (b toggle)"],
                "Fore Rectangle": ["b", SelectType.rectangle,
-                                    "Draw a static foreground rectangle sits infront of all other elements (b toggle)"],
+                                  "Draw a static foreground rectangle sits infront of all other elements (b toggle)"],
                "Fore Circle": ["b", SelectType.circle,
-                                 "Draw a static foreground circle sits infront of all other elements (b toggle)"]
+                               "Draw a static foreground circle sits infront of all other elements (b toggle)"]
                }
 
     updating = {"Config Update": ["5", SelectType.null, "Configure the board wide settings (5)"],
@@ -102,14 +105,19 @@ def get_toolbar():
     screen_drawing = {"Draw Ground": ["0", SelectType.null, "Toggle drawing of ground blocks on/off ('0' toggle)"],
                       "Draw Blocks": ["9", SelectType.null, "Toggle drawing of dynamic blocks on/off ('9' toggle)"],
                       "Draw Sensors": ["8", SelectType.null, "Toggle drawing of sensors on/off ('8' toggle)"],
-                      "Draw Foreground": ["c", SelectType.null, "Toggle drawing of foreground elements on/off ('c' toggle)"]}
+                      "Draw Foreground": ["c", SelectType.null,
+                                          "Toggle drawing of foreground elements on/off ('c' toggle)"]}
 
     joints = {"Distance Joint": ["j", SelectType.straight_join,
-                                 "Create a joint has attempts to keep a set fixed distance between two players (j toggle)"],
+                                 "Create a joint that attempts to keep a set fixed distance between two players (j toggle)"],
               "Rope Joint": ["j", SelectType.straight_join,
-                             "Create a joint constrains two blocks to a maximum distance but can be less (j toggle)"],
+                             "Create a joint that constrains two blocks to a maximum distance but can be less (j toggle)"],
+              "Prismatic Joint": ["j", SelectType.straight_join,
+                                  "Create a joint that restricts movement to a given axis (j toggle)"],
               "Electric": ["j", SelectType.line_join,
                            "Create an electric appearing joint between two blocks (j toggle)"],
+              "Chain": ["j", SelectType.line_join,
+                           "Create a chain joint between two blocks (j toggle)"],
               "Springy Rope": ["j", SelectType.line_join, "To Fix (j toggle)"],
               "Weld Joint": ["j", SelectType.straight_join, "Weld two blocks together (j toggle)"],
               "Wheel Joint": ["j", SelectType.circle, "Create a wheel type joint (j toggle)"],
@@ -120,8 +128,8 @@ def get_toolbar():
 
     layout = []
 
-    sections = [gameplay, updating, screen_drawing, creation, drawing, translation,  sensors,  joints]
-    section_names = ['Gameplay', 'Edit', 'Screen_drawing', 'Creation', 'Drawing', 'Translation',  'Sensors',
+    sections = [gameplay, updating, screen_drawing, creation, drawing, translation, sensors, joints]
+    section_names = ['Gameplay', 'Edit', 'Screen_drawing', 'Creation', 'Drawing', 'Translation', 'Sensors',
                      'Joints']
 
     for section, name in zip(sections, section_names):
@@ -131,15 +139,17 @@ def get_toolbar():
             if len(sub_buttons) == 3:
                 buttons.append(sub_buttons)
                 sub_buttons = []
-            sub_buttons.append(sg.Button(button_text=k,font=("TkHeadingFont", 8), metadata=v, tooltip=v[2], size=(13, 1)))
+            sub_buttons.append(
+                sg.Button(button_text=k, font=("TkHeadingFont", 8), metadata=v, tooltip=v[2], size=(13, 1)))
 
         if sub_buttons != []:
             buttons.append(sub_buttons)
 
         layout.append([sg.Frame(name, buttons, pad=(12, 8), element_justification="center")])
 
-    window = sg.Window('Toolbar', [[sg.Column([[sg.Button(">", key="expand",pad=(2,2))]],pad=(2,2),element_justification="center"),
-                                    sg.Column(layout,key="options")]],disable_close=True)
+    window = sg.Window('Toolbar', [
+        [sg.Column([[sg.Button(">", key="expand", pad=(2, 2))]], pad=(2, 2), element_justification="center"),
+         sg.Column(layout, key="options")]], disable_close=True)
 
     return window
 
@@ -163,19 +173,12 @@ def deal_with_toolbar_event(toolbar):
 
 def get_files():
     files_out = []
-    for root, dirs, files in os.walk("example_saves/"):
+    for root, dirs, files in os.walk("saves/"):
         for file in files:
             if file.endswith(".save"):
                 files_out.append(file)
 
     return files_out
-
-
-def save_gui():
-    event, values = sg.Window('Save State As',
-                              [[sg.Text('Filename')], [sg.Input()], [sg.OK(), sg.Cancel()]]).read(close=True)
-
-    return values[0]
 
 
 def create_windows(block, board, selected=0):
@@ -272,7 +275,7 @@ def update_blocks_joint(values, block, joint_index, window):
                 set_meth = None
 
             if not type(v) in [bool]:
-                if v[0].isnumeric():
+                if v[0].isnumeric() or v[0] == "-":
                     v = float(v)
                 elif type(v) is str:
                     if v.find("(") > -1 or v.find("[") > -1:
@@ -349,17 +352,73 @@ def get_fixtures(block, board):
     return block
 
 
+def save_gui():
+    files = [x.replace(".save", "") for x in get_files()]
+    frame_one = [[sg.Text("Save State")],
+                 [sg.Text("Enter file name"), sg.InputText("", key="filename")],
+                 [sg.Button(button_text="Save As", key="saveas", enable_events=True)]]
+
+    frame_two = [[sg.Listbox(values=files, size=(60, 6), select_mode=sg.LISTBOX_SELECT_MODE_SINGLE, enable_events=True,
+                             key="files")],
+                 [sg.Text("Enter a blurb below.")],
+                 [sg.Button(button_text="Save Over", key="saveover", enable_events=True)]]
+
+    blurb = [[sg.Text("Enter a blurb to save")],[sg.Multiline(default_text="", key="blurb_text", size=(60, 4))]]
+
+    layout = [[sg.Frame('Save New', frame_one)],[sg.Frame('Overwrite', frame_two)],
+              [sg.Frame('Save Additional Information', blurb)]]
+
+    window = sg.Window('Save', layout)
+
+    leave_ok = False
+    while True:  # Event Loop
+        event, values = window.read(timeout=1)
+        if event == "files":
+            window["blurb"].update(load_state(window["files"])[5])
+        elif event == "saveas":
+            if window["filename"].get() in files:
+                ans = sg.popup_yes_no(
+                    f"There is already a save with this name. Are you sure you want to save as '{window['filename'].get()}'")
+                if ans == "Yes":
+                    leave_ok = True
+                    filename = window["filename"].get()
+                    break
+            else:
+                leave_ok = True
+                filename = window["filename"].get()
+                break
+        elif event == "saveover":
+            ans = sg.popup_yes_no(
+                f"Save over current file '{window['filename']}'?")
+            if ans == "Yes":
+                leave_ok = True
+                filename = window["files"].get()
+
+        elif event == sg.WIN_CLOSED:
+            break
+
+    window.close()
+
+    if leave_ok:
+        return filename, values["blurb_text"],
+    else:
+        return None, None
+
+
 def load_gui(timer=None, phys=None, draw=None, board=None, msg=None, persistant=True):
+
     basicLoad = [[sg.Text("Open Blank Playing Board")],
-                 [sg.Text("Width"), sg.InputText("800", key="width")],
-                 [sg.Text("Height"), sg.InputText("600", key="height")],
+                 [sg.Text("Width"), sg.InputText("1200", key="width")],
+                 [sg.Text("Height"), sg.InputText("800", key="height")],
                  [sg.OK(button_text="Create")]]
 
     files = [x.replace(".save", "") for x in get_files()]
 
     savesLoad = [[sg.Text("Load Saved State")],
-                 [sg.Listbox(values=files, size=(30, 6), select_mode=sg.LISTBOX_SELECT_MODE_SINGLE, key="files")],
-                 [sg.FileBrowse(file_types=(("Save Files", "*.save"))), sg.OK(button_text="Load")]]
+                 [sg.Listbox(values=files, size=(50, 6), select_mode=sg.LISTBOX_SELECT_MODE_SINGLE, key="files",enable_events=True)],
+                 [sg.Multiline("", key="blurb", size=(50, 4), disabled=True)],
+                 [sg.FileBrowse(file_types=(("Save Files", "*.save"))), sg.OK(button_text="Load")]
+                 ]
 
     layout = [[sg.TabGroup([[sg.Tab('Basic', basicLoad), sg.Tab('Load', savesLoad)]])]]
     window = sg.Window('Create/Load', layout)
@@ -374,7 +433,7 @@ def load_gui(timer=None, phys=None, draw=None, board=None, msg=None, persistant=
         # gui if load selected
         if event == "Load":
             if values["files"][0] != "":
-                timer, phys, draw, board, msg = load_state(values["files"][0])
+                timer, phys, draw, board, msg,blurb = load_state(values["files"][0])
                 msg.set_message("State Loaded")
                 draw.reset()
                 sg.popup("Don't forget to unpause before playing")
@@ -383,7 +442,7 @@ def load_gui(timer=None, phys=None, draw=None, board=None, msg=None, persistant=
                 sg.popup(title="No save selected.")
 
         # gui if create selected
-        if event == "Create":
+        elif event == "Create":
             if values["height"].isnumeric() and values["width"].isnumeric():
                 timer, phys, board, draw, msg = load(height=int(values["height"]), width=int(values["width"]))
                 msg.set_message("New Board")
@@ -391,12 +450,16 @@ def load_gui(timer=None, phys=None, draw=None, board=None, msg=None, persistant=
             else:
                 sg.popup(title="Error in height or width.")
 
+        #event on click list
+        elif event == "files":
+            window["blurb"].update(load_state(values["files"])[5])
+
     window.close()
 
     return timer, phys, draw, board, msg
 
 
-def update_config(values, config=ConfigObj("config.cfg")):
+def update_config(values, config=ConfigObj("config.cfg"),window=None):
     ans = ""
     config.interpolation = False
     config.list_values = False
@@ -421,7 +484,6 @@ def load_options():
     # get config file
     config = ConfigObj('config.cfg')
     # set pysimplegui options
-
 
     # blank window
     # Column layout
@@ -462,9 +524,19 @@ def load_options():
 
             elif type(vv) == dict:
                 inner = []
+                options_found = False
                 for key, val in vv.items():
-                    inner.append(
-                        sg.Checkbox(key, key=k + "-" + kk + ":" + key, default=(True if val is True else False)))
+                    if key.find("type") > -1:
+                        input_type = key[-1]
+                        options_found = True
+                    if input_type == "c":
+                        inner.append(
+                            sg.Radio(key, group_id=k + "-" + kk, key=k + "-" + kk + ":" + key,visible=False if options_found else True, default=(True if val is True else False)))
+
+                    else:
+                        inner.append(
+                            sg.Checkbox(key, key=k + "-" + kk + ":" + key, visible=False if options_found else True, default=(True if val is True else False)))
+                    options_found = False
                 tab.append(inner)
                 inner = []
             elif kk.find("scale") > -1:
@@ -517,13 +589,14 @@ def load_options():
                         window[k].focus()
                         found += 1
             if found == 0:
-                update_config(values)
+                update_config(values, window=window)
                 window.close()
                 break
     window.close()
 
 
 def update_block_values(values, block):
+    # update the block attributes
     for k, v in values.items():
         if v != "":
             if not type(v) is bool:
@@ -546,7 +619,7 @@ def update_block_values(values, block):
 
 
 def update_block(block):
-
+    # load upadte block GUI
     layout = [[sg.Checkbox(text="Is Awake?", key="awake", default=block.body.awake)],
               [sg.Checkbox(text="Is Active?", key="active", default=block.body.active)],
               [sg.Checkbox(text="Has fixed rotation?", key="fixedRotation", default=block.body.fixedRotation)],
@@ -582,14 +655,14 @@ def update_block(block):
                 block = update_block_values(values, block)
                 break
         except TypeError:
-            #user closed window unexpectedly
+            # user closed window unexpectedly
             pass
     window.close()
     return block
 
 
 def update_background(board, phys, msg):
-
+    # load update background GUI
     background = [
         sg.Frame('Choose Background', layout=[[sg.Text("Backgrounds are displayed behind ALL other elements")],
                                               [sg.FileBrowse(key="background",
