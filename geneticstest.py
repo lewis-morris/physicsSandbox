@@ -166,6 +166,13 @@ def add(event, x, y, flags, param):
 
         if cur_key[1:] == SelectType.select.value and msg.message == "Mouse Move":
             draw, phys = mouse_joint_move(draw, phys, x_new, y_new, event, cur_key)
+
+        elif msg.message == "Screen Move":
+            draw, board = move_screen(draw, board, x_new, y_new, event)
+        elif msg.message == "Center Clicked":
+            #centers the board onto the clicked player
+            draw, phys = center_clicked(draw, phys, x_new, y_new, event, cur_key)
+
         else:
             if msg.message == "Clone Move":
                 draw, phys = move_clone(draw, phys, x_new, y_new, event, True)
@@ -219,6 +226,8 @@ def add(event, x, y, flags, param):
         """
         draw, phys = draw_ground(draw, phys, event, x_new, y_new, cur_key, board = board)
 
+
+    # this moves the screen based on if the mouse is on the edge of the screen - hard to get to the controls
     if phys.options["screen"]["allow_x_move"] is True:
         if old_x < board.board.shape[1] *.15:
             board.x_trans_do = "up"
@@ -247,7 +256,7 @@ if __name__ == "__main__":
     cur_key = ""
     loops = 0
 
-    timeStep = 1.0 / 60
+    timeStep = 1.0 / 50
 
     # set window name and mouse callback for mouse events
     cv2.namedWindow("Board")
@@ -312,7 +321,7 @@ if __name__ == "__main__":
             msg.goal_hits += goal_hits
 
             #step the physics engine
-            phys.world.Step(timeStep, 7, 6)
+            phys.world.Step(timeStep, 6, 3)
             phys.world.ClearForces()
 
 

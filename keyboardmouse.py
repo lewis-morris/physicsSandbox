@@ -1,10 +1,12 @@
+import random
+
 import cv2
 import numpy as np
 
 from shapely import affinity
 
 from draw_functions import SelectType
-from functions import get_config, convert_from_mks
+from functions import get_config, convert_from_mks, create_floor_poly
 from gui import save_gui, load_gui, load_options, update_background
 from objects import Messenger, load, pickler
 import PySimpleGUI as sg
@@ -92,6 +94,16 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
                    "Fore Circle": SelectType.circle}
         cur_key = msg.auto_set(options, key)
 
+
+    elif key == ord("i"):
+        # draw terrain
+
+        draw.reset()
+        options = {"Generate Terrain": SelectType.null}
+        cur_key = msg.auto_set(options, key)
+        draw,phys,board = create_terrain(draw, phys, board = board)
+
+
     elif key == ord("f"):
         # draw fragments or select
         draw.reset()
@@ -135,7 +147,7 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
     elif key == ord("m"):
         # Mouse Move
         draw.reset()
-        options = {"Mouse Move": SelectType.select, "Normal Move": SelectType.null, "Clone Move": SelectType.null}
+        options = {"Screen Move": SelectType.null, "Mouse Move": SelectType.select, "Normal Move": SelectType.null, "Clone Move": SelectType.null, "Center Clicked": SelectType.null}
         cur_key = msg.auto_set(options, key)
 
     elif key == ord("t"):
@@ -272,7 +284,7 @@ def rotate_block(draw, phys, event, x, y, type, board=None):
                     draw.locations = [[x, y]]
                     draw.status = "rotate"
                 elif len(draw.locations) > 1:
-                    draw, phys = get_set_selected(draw, phys, "rotate", last_loc=True)
+                    draw, phys = get_set_selected(draw, phys, "rotate", last_loc=True, board=board)
                     if len(draw.player_list) > 0:
                         draw.stage += 1
                         draw.locations = [[x, y]]
@@ -718,7 +730,25 @@ def delete(draw, phys, event, x, y, type, board=None):
             draw.reset()
     return draw, phys
 
+def create_terrain(draw,phys,board):
+    poly = create_floor_poly(4000,3000)
+    phys.kill_all(terrain=True)
+    coords = poly.exterior.coords
+    last_coord = coords[-1]
+    x_trans = 0 - last_coord[0]
+    y_trans = board.board.shape[0] - last_coord[1]
+    coords = [[co[0] + x_trans, co[1] + y_trans ]for co in coords]
 
+    phys.fractal_create(coords,terrain=True)
+
+    col = [1, 92, 40]
+    for bl in phys.block_list:
+        if bl.is_terrain == True:
+            bl.colour = col
+            col[2] += random.randint(0,10)
+            col[1] += random.randint(0,10)
+
+    return draw,phys,board
 def draw_fragment(draw, phys, event, x, y, type, board=None):
     # used for the fragment tool
     if type[1:] == SelectType.draw.value:
@@ -1197,7 +1227,7 @@ def get_poly_from_two_rectangle_points(loca, locb):
     return poly
 
 
-def get_set_selected(draw, phys, new_status, reset_on_none=True, last_loc=False):
+def get_set_selected(draw, phys, new_status, reset_on_none=True, last_loc=False, board= None):
     # gets and sets the selected plays - if nothing selected then then reset
     if len(draw.locations) <= 1:
         draw.reset()
@@ -1205,7 +1235,7 @@ def get_set_selected(draw, phys, new_status, reset_on_none=True, last_loc=False)
     # get poly from select rectangle
     poly = np.array(get_squ(draw.locations[0], draw.locations[-1 if last_loc is True else 1]))
     # check which blocks are contained in it
-    contains = check_contains_all(phys.block_list, poly)
+    contains = check_contains_all(phys.block_list, poly, board=board)
     # if none then reset
     if contains == []:
         draw.reset()
@@ -1382,6 +1412,44 @@ def make_player(draw, phys, event, x, y, cur_key):
                 else:
                     bl.is_player = False
             draw.reset()
+    return draw, phys
+
+def move_screen(draw, board, x=None, y=None, event=None):
+
+    if event == cv2.EVENT_LBUTTONDOWN:
+        draw.reset()
+        draw.log_point(x, y, "screen")
+
+    elif event == cv2.EVENT_MOUSEMOVE and draw.status == "screen":
+        draw.log_point(x, y, "screen")
+        back = -2
+        while abs(back) < len(draw.locations):
+            if calculateDistance(draw.locations[-1][0], draw.locations[-1][1], draw.locations[back][0], draw.locations[back][1]) > 2:
+                board.translation[0] += draw.locations[-1][0] - draw.locations[back][0]
+                board.translation[1] += draw.locations[-1][1] - draw.locations[back][1]
+                break
+            back -= 1
+            if back < -5:
+                break
+
+    elif event == cv2.EVENT_LBUTTONUP:
+        draw.reset()
+
+    return draw, board
+
+def center_clicked(draw, phys, x=None, y=None, event=None, cur_key=None):
+
+    if event == cv2.EVENT_LBUTTONDOWN:
+
+        draw, phys, clicked, coords = select_player(draw, phys, x, y, None, None, pause=False)
+
+        for bl in phys.block_list:
+            bl.center_me = False
+
+        if not clicked is None:
+            clicked.center_me = True
+
+
     return draw, phys
 
 

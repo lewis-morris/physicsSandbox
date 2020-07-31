@@ -1,4 +1,5 @@
 import configparser
+import copy
 import math
 import pickle
 
@@ -46,14 +47,64 @@ def convert_from_mks(x, y=None):
 
 def fragment_poly(conts):
 
+
     conts = constrained_delaunay_triangles([tuple(x) for x in np.array(conts).squeeze()])
     final_contours = []
     for cn in conts:
         final_contours.append(cn)
     return final_contours
 
+def create_floor_poly(max_width, max_height):
 
-def check_contains_all(block_list, shape):
+    coords = [[0, 0], [400, 0]]
+    slope_times = 0
+    slope = 0
+    slope = random.randint(0, 4)
+
+    while True:
+        x_rand = random.randint(20, 100)
+
+        if slope_times == 0:
+            if slope < 4:
+                slope = 4
+            else:
+                slope = random.randint(0, 4)
+            slope_times = random.randint(2, 5)
+
+        if slope == 4:
+            y_rand = 0
+
+        else:
+
+            if random.randint(0, 10) == 10:
+                y_rand = random.randint(30, 70)
+            else:
+                y_rand = random.randint(3, 30)
+
+            y_rand = y_rand if slope < 2 else -y_rand
+
+        new_coords = copy.copy(coords[-1])
+        new_coords[0] += x_rand
+        new_coords[1] += y_rand*-1
+
+        if not new_coords[1] > max_height:
+            coords.append(new_coords)
+
+        slope_times -= 1
+
+        if new_coords[0] > max_width:
+            break
+    #     if new_coords[0] > 2000
+    #     min_h = -2000
+
+    min_y = max([co[1] for co in coords]) + 100
+
+    coords.append([coords[-1][0], min_y])
+    coords.append([0, min_y])
+
+    return Polygon(coords)
+
+def check_contains_all(block_list, shape, board):
     """ used to search a rectangular shape for blocks"""
 
     contained_list = []
@@ -65,7 +116,7 @@ def check_contains_all(block_list, shape):
     blocks = block_list
 
     for bl in blocks:
-        poly = get_poly_from_ob(bl)
+        poly = get_poly_from_ob(bl, board)
         if square.covers(poly) is True:
             contained_list.append(bl)
 
@@ -225,12 +276,13 @@ def get_clicked(bodies, x, y, board, shrink_cir=16):
               bl not in sensor_blocks and bl not in floor and bl not in foreground and bl not in player]
 
     for i in np.arange(len(floor+sensor_blocks+player+blocks) - 1, -1, -1):
-        bl = bodies[i]
-        is_clicked, shape = check_contains(bl, (x, y), board, shrink_cir)
-        if is_clicked is True:
-            block = bl
-            coords = shape
-            break
+        if bodies != []:
+            bl = bodies[i]
+            is_clicked, shape = check_contains(bl, (x, y), board, shrink_cir)
+            if is_clicked is True:
+                block = bl
+                coords = shape
+                break
     return block, coords
 
 

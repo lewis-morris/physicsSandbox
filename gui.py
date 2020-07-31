@@ -39,13 +39,16 @@ def get_toolbar():
                 "Delete": ["x", SelectType.select, "Delete a player with mouse - click or select (x)"],
                 "Delete Joint": ["u", SelectType.select, "Delete attached joints (u)"],
                 "Create": ["1", SelectType.select_point, "Create a block on mouse click (1 toggle)"],
-                "Fire Poly": ["1", SelectType.vector_direction, "Fire a block on mouse click and drag (1 toggle)"]}
+                "Fire Poly": ["1", SelectType.vector_direction, "Fire a block on mouse click and drag (1 toggle)"],
+                "Create Terrain":["i",SelectType.null, "Generate Terrain"]}
 
-    translation = {"Mouse Move": ["m", SelectType.select, "Move selected player with physics (m toggle)"],
+    translation = {"Screen Move": ["m", SelectType.select, "Move the screen position with click drag (m toggle)"],
+                   "Mouse Move": ["m", SelectType.select, "Move selected player with physics (m toggle)"],
                    "Normal Move": ["m", SelectType.null, "Move selected player(s) paused physics (m toggle)"],
                    "Clone Move": ["m", SelectType.null, "Clone selected player(s) paused physics (m toggle)"],
                    "Transform": ["t", SelectType.player_select, "Transform selected player(s) (t toggle)"],
-                   "Rotate": ["2", SelectType.player_select, "Rotate player(s) on click or select (2)"]}
+                   "Rotate": ["2", SelectType.player_select, "Rotate player(s) on click or select (2)"],
+                   "Center Clicked": ["m", SelectType.select,"Center the board on the selected item if nothing selected clears"]}
 
     drawing = {"Polygon": ["p", SelectType.draw, "Draw a block polygon that reacts to physics (d toggle)"],
                "Rectangle": ["p", SelectType.rectangle, "Draw a block rectangle that reacts to physics (d toggle)"],
@@ -408,8 +411,12 @@ def save_gui():
 def load_gui(timer=None, phys=None, draw=None, board=None, msg=None, persistant=True):
 
     basicLoad = [[sg.Text("Open Blank Playing Board")],
-                 [sg.Text("Width"), sg.InputText("1200", key="width")],
-                 [sg.Text("Height"), sg.InputText("800", key="height")],
+                 [sg.Text("Width"), sg.InputText("1200", key="width", size=(15,1))],
+                 [sg.Text("Height"), sg.InputText("800", key="height", size=(15,1))],
+
+                 [sg.Text("Boundry Width"), sg.InputText("3000", key="bwidth", size=(15,1))],
+                 [sg.Text("Boundry Height"), sg.InputText("2000", key="bheight", size=(15,1))],
+
                  [sg.OK(button_text="Create")]]
 
     files = [x.replace(".save", "") for x in get_files()]
@@ -444,7 +451,7 @@ def load_gui(timer=None, phys=None, draw=None, board=None, msg=None, persistant=
         # gui if create selected
         elif event == "Create":
             if values["height"].isnumeric() and values["width"].isnumeric():
-                timer, phys, board, draw, msg = load(height=int(values["height"]), width=int(values["width"]))
+                timer, phys, board, draw, msg = load(height=int(values["height"]), width=int(values["width"]), b_height =int(values["bheight"]), b_width = int(values["bwidth"]) )
                 msg.set_message("New Board")
                 break
             else:

@@ -20,7 +20,7 @@ from configobj import ConfigObj
 config = ConfigObj('config_default.cfg')
 
 
-def load(height=600, width=800):
+def load(height=800, width=1200, b_height = None, b_width = None):
     """ Init """
 
     timer = Timer(get_config("screen", "fps"))
@@ -39,6 +39,39 @@ def load(height=600, width=800):
     phys.width = SCREEN_WIDTH
     board.palette = Palette()
     board.palette.set_palllette(phys.options["screen"]["palette"])
+
+    #create boundry blocks
+    width_block = 100
+    center = (width / 2, height / 2)
+    if not None in [b_height, b_width]:
+        #top block
+        shape = [[-b_width/2,-width_block/2],[b_width/2, -width_block/2],[b_width/2,width_block/2],[-b_width/2,width_block/2]]
+        pos = (center[0], -((b_height-height)/2) - (width_block/2))
+        phys.create_block(shape=shape,pos=pos,poly_type=-1)
+
+        #bottom block
+        shape = [[-b_width/2,-width_block/2],[b_width/2, -width_block/2],[b_width/2,width_block/2],[-b_width/2,width_block/2]]
+        pos = (center[0], height + ((b_height-height)/2) + (width_block/2))
+        phys.create_block(shape=shape,pos=pos,poly_type=-1)
+
+        # left block
+        shape = [[-width_block / 2, -b_height / 2], [width_block / 2, -b_height / 2], [width_block / 2, b_height / 2],
+                 [-width_block / 2, b_height / 2]]
+
+
+        pos = ((-(b_width-width)/2) - (width_block/2), center[1])
+        phys.create_block(shape=shape, pos=pos, poly_type=-1)
+
+        #right block
+        #top block
+        shape = [[-width_block/2,-b_height/2],[width_block/2, -b_height/2],[width_block/2,b_height/2],[-width_block/2,b_height/2]]
+        pos = (width + (((b_width-width)/2) + (width_block/2)), center[1])
+        phys.create_block(shape=shape,pos=pos,poly_type=-1)
+
+
+        for bl in phys.block_list:
+            bl.is_boundry = True
+            bl.colour = (255,0,0)
 
     return timer, phys, board, draw, msg
 
@@ -189,7 +222,7 @@ class Draw():
                 self.coords.append(coords)
 
         elif self.status in ["distance", "weld_pos", "rotation_pos", "wheel_draw", "wheel_move", "rectangle_draw",
-                             "circle_draw", "line_draw", "length", "bullet"]:
+                             "circle_draw", "line_draw", "length", "bullet","screen"]:
             self.locations.append([x, y])
         elif self.status in ["double_dist"] and len(self.player_list) == 1:
 
@@ -314,8 +347,8 @@ class Draw():
                 if not block.is_player:
                     coord = get_poly_from_ob(block, 3).exterior.coords
                     for i in range(len(coord)):
-                        co1 = tuple([int(x) for x in coord[i]])
-                        co2 = tuple([int(x) for x in coord[(i + 1) if i != len(coord) - 1 else 0]])
+                        co1 = tuple(np.array([int(x) for x in coord[i]])+ board.translation)
+                        co2 = tuple(np.array([int(x) for x in coord[(i + 1) if i != len(coord) - 1 else 0]]) + board.translation)
                         board.board_copy = cv2.line(board.board_copy, co1, co2,
                                                     board.palette.current_palette[board.palette.line], 3)
                         board.board_copy = cv2.line(board.board_copy, co1, co2,
@@ -425,10 +458,13 @@ class Physics():
                             palette = val
                             board.palette.set_palllette(palette)
 
-    def kill_all(self, static=True):
+    def kill_all(self, static=True,terrain=False):
         for i in np.arange(len(self.block_list) - 1, -1, -1):
             block = self.block_list[i]
-            if static:
+            if terrain:
+                if block.is_terrain:
+                    self.delete(block)
+            elif static:
                 self.delete(block)
             else:
                 if not block.static:
@@ -744,13 +780,13 @@ class Physics():
 
             self.delete(bl)
 
-    def fractal_create(self, shape, static=True, convert=False):
+    def fractal_create(self, shape, static=True, convert=False, terrain=False):
 
         shape = shape[:-1]
         if len(shape) <= 4:
             shape = dent_contour(shape)
         conts = fragment_poly(shape)
-
+        blocks = []
         for con in conts:
             poly = Polygon(con)
             new_con = [(int(x[0] - poly.centroid.x), int(x[1] - poly.centroid.y)) for x in con]
@@ -763,9 +799,13 @@ class Physics():
                 else:
                     poly_type = -1
                 self.create_block(pos=(poly.centroid.x, poly.centroid.y), poly_type=poly_type, shape=new_con,
-                                  draw_static=True)
+                                  draw_static=True,force_static_block=terrain)
+            blocks.append(self.block_list[-1])
+
+        return blocks
 
     def fractal_block(self, ob, create=True, static=True, allow_another=True, convert=False):
+
         if create is True:
             self.fractal_create(ob, static, convert=convert)
         elif create is False:
@@ -786,7 +826,7 @@ class Physics():
 
     def create_block(self, shape=None, pos=None, rest=None, density=None, friction=None, poly_type=None,
                      set_sprite=False, draw_static=True, size=None, static=False, draw=None, sq_points=False,
-                     foreground=False):
+                     foreground=False,force_static_block=False):
         """
         Create the block object
 
@@ -859,7 +899,11 @@ class Physics():
         position = convert_to_mks(pos[0], pos[1])
 
         if static == True or (poly_type in [-1, -2]):
-            create_type = self.world.CreateKinematicBody
+            if force_static_block:
+                create_type = self.world.CreateStaticBody
+            else:
+                create_type = self.world.CreateKinematicBody
+
         else:
             create_type = self.world.CreateDynamicBody
 
@@ -946,6 +990,9 @@ class Physics():
                 # for when blocks are too small
                 return False
 
+        if force_static_block:
+            self.block_list[-1].is_terrain = True
+
         self.block_list[-1].body.fixtures[0].restitution = rest
         self.block_list[-1].body.fixtures[0].density = density
         self.block_list[-1].body.fixtures[0].friction = friction
@@ -977,6 +1024,47 @@ class Physics():
 
             elif bl.body.userData["bullet_actions"] == "kill":
                 self.delete(bl)
+    def check_board_translation(self,board):
+        #check if the board needs translating -
+        if board.x_trans_do == "up":
+            board.translation[0] += 4
+        elif board.x_trans_do == "down":
+            board.translation[0] -= 4
+
+        if board.y_trans_do == "up":
+            board.translation[1] += 4
+        elif board.y_trans_do == "down":
+            board.translation[1] -= 4
+
+        return board
+
+    def check_player_translation(self, board):
+
+        if self.block_list != []:
+            block = [bl for bl in self.block_list if bl.center_me]
+
+            if block != []:
+                block = block[0]
+                block.get_current_pos(board)
+                x = [x[0] for x in block.translated_position]
+                y = [x[1] for x in block.translated_position]
+                min_x = min(x)
+                max_x = max(x)
+                min_y = min(y)
+                max_y = max(y)
+
+                if min_x < board.board.shape[1] * .35:
+                    board.translation[0] +=  int((board.board.shape[1] * .35) - min_x)
+                elif max_x > board.board.shape[1] * .65:
+                    board.translation[0] -= int(max_x - (board.board.shape[1] * .65))
+
+                if min_y < board.board.shape[0] * .35:
+                    board.translation[1] += int((board.board.shape[0] * .35) - min_y)
+                elif max_y > board.board.shape[0] * .65:
+                    board.translation[1] -= int(max_y - (board.board.shape[0] * .65))
+
+
+        return board
 
     def draw_blocks(self, board, ground_only=False, ground=False):
         """
@@ -986,16 +1074,10 @@ class Physics():
         """
 
         #check if the coord translation needs doing
-        if board.x_trans_do == "up":
-            board.translation[0] += 4
-        elif board.x_trans_do == "down":
-            board.translation[0] -= 4
+        board = self.check_board_translation(board)
+        board = self.check_player_translation(board)
 
 
-        if board.y_trans_do == "up":
-            board.translation[1] += 4
-        elif board.y_trans_do == "down":
-            board.translation[1] -= 4
 
         # split sensors and blocks
         floor = [bl for bl in self.block_list if
@@ -1365,29 +1447,40 @@ class Physics():
         if they are then remove them
 
         """
-        goals = 0
-        h, w, _ = board.board_copy.shape
 
-        for bl in self.block_list:
-            if bl.current_position != [] and bl.static == False:
+        #kill blocks that have hit the boundry
+        for i in np.arange(len(self.block_list) - 1, -1, -1):
+            bl = self.block_list[i]
+            if bl.body.userData["kill"]:
+                self.delete(bl)
 
-                x = [x[0] for x in bl.current_position]
-                y = [x[1] for x in bl.current_position]
 
-                if max(x) < 0:
-                    bl.active = False
-                    bl.times_off += 1
-                if min(x) > w:
-                    bl.active = False
-                    bl.times_off += 1
-                if min(y) > h:
-                    bl.active = False
-                    bl.times_off += 1
-
-                if bl.active is False and bl.times_off > 2:
-                    self.delete(bl)
+        #old code now uses boundries
+        # goals = 0
+        # h, w, _ = board.board_copy.shape
+        #
+        # for bl in self.block_list:
+        #     if bl.current_position != [] and bl.static == False:
+        #
+        #         x = [x[0] for x in bl.current_position]
+        #         y = [x[1] for x in bl.current_position]
+        #
+        #         if max(x) < 0:
+        #             bl.active = False
+        #             bl.times_off += 1
+        #         if min(x) > w:
+        #             bl.active = False
+        #             bl.times_off += 1
+        #         if min(y) > h:
+        #             bl.active = False
+        #             bl.times_off += 1
+        #
+        #         if bl.active is False and bl.times_off > 2:
+        #             self.delete(bl)
 
         # delete hit goal items
+        goals = 0
+
         for bl in self.block_list:
             if bl.body.userData["goal"] == True:
                 goals += 1
@@ -1400,6 +1493,7 @@ class Physics():
                     board.reset = True
                 else:
                     self.delete(bl)
+
         return goals
 
 
@@ -1407,8 +1501,10 @@ class Ball():
 
     def __init__(self, body, set_sprite=False, sprite=None, draw=True, poly_type=None, static_shape=False):
         self.body = body
+
         self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False,
-                              "player_allow_impulse": True, "bullet_actions": None, "bullets_destory_ground": False}
+                              "player_allow_impulse": True, "bullet_actions": None, "bullets_destory_ground": False, "kill":False}
+
         self.type = poly_type
         self.pos = None
         self.current_position = []
@@ -1431,6 +1527,10 @@ class Ball():
         self.goal = False
         self.splitter = False
         self.forcer = None
+        self.is_boundry = False
+        self.is_terrain = False
+
+        self.center_me = False
 
         self.bullet = False
         self.bullet_creator = None
@@ -1440,6 +1540,7 @@ class Ball():
         self.mask = None
         self.inv_mask = None
         self.sprite_on = False
+
 
         if set_sprite is True:
             self.set_sprite()
@@ -1587,7 +1688,7 @@ class Block():
     def __init__(self, body, static_shape=True, set_sprite=False, sprite=None, draw_static=True, poly_type=None):
         self.body = body
         self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False,
-                              "player_allow_impulse": True, "bullet_actions": None, "bullets_destory_ground": False}
+                              "player_allow_impulse": True, "bullet_actions": None, "bullets_destory_ground": False, "kill":False}
         self.type = poly_type
         self.pos = None
         self.current_position = []
@@ -1619,6 +1720,10 @@ class Block():
         self.inv_mask = None
         self.sprite_on = False
         self.is_player = False
+        self.center_me = False
+        self.is_boundry = False
+        self.is_terrain = False
+
         if set_sprite:
             self.set_sprite()
 
@@ -1772,7 +1877,7 @@ class Block():
                     # board[y_start:y_end, x_start:x_end] = board[y_start:y_end, x_start:x_end] * (1 - mask) + (img * mask)
                 else:
 
-                    if type(self.colour) is tuple:
+                    if type(self.colour) is tuple or type(self.colour) is list:
                         colour = self.colour
                     else:
                         colour = board.palette.current_palette[self.colour]
@@ -1799,6 +1904,7 @@ class Block():
 
 
 class Board():
+
     def __init__(self):
         self.board_name = None
         self.board = None
@@ -2062,6 +2168,17 @@ class Contacter(b2ContactListener):
                 if not contact.fixtureA.body.userData["ob"].static or contact.fixtureB.body.userData[
                     "bullets_destory_ground"]:
                     contact.fixtureA.body.userData["bullet_actions"] = "hit"
+
+
+        #check if the player has hit the boundry of the map
+        if "ob" in contact.fixtureB.body.userData and "ob" in contact.fixtureA.body.userData:
+            if contact.fixtureA.body.userData["ob"].is_boundry and not contact.fixtureB.body.userData["ob"].is_player:
+                contact.fixtureB.body.userData["kill"] = True
+
+        if "ob" in contact.fixtureA.body.userData and "ob" in contact.fixtureB.body.userData:
+            if contact.fixtureB.body.userData["ob"].is_boundry and not contact.fixtureA.body.userData["ob"].is_player:
+                contact.fixtureA.body.userData["kill"] = True
+
 
     def PreSolve(self, contact, impulse):
         pass
