@@ -7,7 +7,8 @@ from shapely import affinity
 
 from draw_functions import SelectType
 from functions import get_config, convert_from_mks, create_floor_poly
-from gui import save_gui, load_gui, load_options, update_background
+from gui import save_gui, load_gui, load_options, update_background, get_key_gui, get_select_joints_with_motor, \
+    terrain_complexity_gui
 from objects import Messenger, load, pickler
 import PySimpleGUI as sg
 from shapely.geometry import Polygon
@@ -16,7 +17,7 @@ from functions import get_squ, check_contains_all, get_clicked, convert_to_mks, 
 from Box2D import b2MouseJoint, b2RevoluteJoint
 
 
-def action_key_press(key, cur_key, draw, phys, msg, timer, board):
+def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, force):
     """
     Deal with the key presses
     :param key:
@@ -24,7 +25,7 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
     """
 
     # delete any old mouse joints prior to dealing with the next keypress
-    if key != ord("m") and msg.message != "Mouse Move":
+    if key != ord("m") and msg.message != "Mouse Move" and cur_key_type == 0:
         for jn in phys.world.joints:
             if type(jn) is b2MouseJoint:
                 phys.world.DestroyJoint(jn)
@@ -32,14 +33,14 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
     if key == 255:
         pass
 
-    elif key == ord("r"):
+    elif key == ord("r") and cur_key_type == 0:
         # RESET SCREEN
         draw.reset()
         msg = Messenger(phys.options["screen"]["fps"], board.board)
         msg.set_message("Reset")
         board.reset = True
 
-    elif key == ord("q"):
+    elif key == ord("q") and cur_key_type == 0:
         # QUIT
         msg.set_message("Quit")
         val =  sg.popup_yes_no("Are you sure you want to quit?")
@@ -47,129 +48,113 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
             board.run = False
 
 
-    elif key == ord("z"):
+    elif key == ord("z") and cur_key_type == 0:
         # SPAWN
         msg.set_message("Spawn")
         phys.create_block()
 
-    elif key == ord("u"):
+    elif key == ord("u") and cur_key_type == 0:
         # draw delete blocks
         draw.reset()
         options = {"Remove Joints": SelectType.select}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("x"):
+    elif key == ord("x") and cur_key_type == 0:
         # draw delete blocks
         draw.reset()
         options = {"Delete": SelectType.select}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("]"):
-        # draw polygon
-        draw.reset()
-        options = {"Shoot Bullet": SelectType.bullet_direction}
-        cur_key = msg.auto_set(options, key)
-
-    elif key == ord("["):
-        # draw polygon
-        draw.reset()
-        options = {"Choose Player": SelectType.null}
-        cur_key = msg.auto_set(options, key)
-
-    elif key in [ord("a"), ord("w"), ord("s"), ord("d")]:
-        # draw polygon
-        draw.reset()
-        phys.impulse_player(key)
-
-    elif key == ord("p"):
+    elif key == ord("p") and cur_key_type == 0:
         # draw polygon
         draw.reset()
         options = {"Polygon": SelectType.draw, "Rectangle": SelectType.rectangle, "Circle": SelectType.circle}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("b"):
+    elif key == ord("b") and cur_key_type == 0:
         # draw polygon
         draw.reset()
         options = {"Fore Polygon": SelectType.draw, "Fore Rectangle": SelectType.rectangle,
                    "Fore Circle": SelectType.circle}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
 
-    elif key == ord("i"):
+    elif key == ord("i") and cur_key_type == 0:
         # draw terrain
 
         draw.reset()
         options = {"Generate Terrain": SelectType.null}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
+
         draw,phys,board = create_terrain(draw, phys, board = board)
 
 
-    elif key == ord("f"):
+    elif key == ord("f") and cur_key_type == 0:
         # draw fragments or select
         draw.reset()
         options = {"Fragment Poly": SelectType.draw, "Frament Rectangle": SelectType.rectangle,
                    "Frament Select": SelectType.select}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("g"):
+    elif key == ord("g") and cur_key_type == 0:
         # draw ground
         draw.reset()
         options = {"Ground Poly": SelectType.draw, "Ground Rectangle": SelectType.rectangle,
                    "Ground Circle": SelectType.circle}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("1"):
+    elif key == ord("1") and cur_key_type == 0:
         # fire polygon
         draw.reset()
         options = {"Create": SelectType.select_point, "Fire Poly": SelectType.vector_direction}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("4"):
+    elif key == ord("4") and cur_key_type == 0:
         # select
         # draw ground
         draw.reset()
         options = {"Select Joints": SelectType.select}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord(";"):
+    elif key == ord(";") and cur_key_type == 0:
         # select
         # draw ground
         draw.reset()
         options = {"Select/Print": SelectType.select}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("2"):
+    elif key == ord("2") and cur_key_type == 0:
         # Mouse Move
         draw.reset()
         options = {"Rotate": SelectType.player_select}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("m"):
+    elif key == ord("m") and cur_key_type == 0:
         # Mouse Move
         draw.reset()
-        options = {"Screen Move": SelectType.null, "Mouse Move": SelectType.select, "Normal Move": SelectType.null, "Clone Move": SelectType.null, "Center Clicked": SelectType.null}
-        cur_key = msg.auto_set(options, key)
+        options = {"Mouse Move": SelectType.select, "Normal Move": SelectType.null, "Clone Move": SelectType.null}
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("t"):
+    elif key == ord("t") and cur_key_type == 0:
         # Mouse Move
         draw.reset()
         options = {"Transform": SelectType.player_select}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("e"):
+    elif key == ord("e") and cur_key_type == 0:
         # draw ropes
         draw.reset()
         phys.kill_all(static=False)
         msg.set_message("Remove Blocks")
         cur_key = "e"
 
-    elif key == ord("v"):
+    elif key == ord("v") and cur_key_type == 0:
         # draw ropes
         draw.reset()
         msg.set_message("Set Spawn")
         cur_key = "v"
 
-    elif key == ord("h"):
+    elif key == ord("h") and cur_key_type == 0:
         # draw fragment ALL players
         # cur_key = "h"
         msg.set_message("Frag All")
@@ -177,66 +162,66 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
         blocks = [bl for bl in phys.block_list if not bl.static is True]
         phys.fractal_block(blocks, create=False)
 
-    elif key == ord("k"):
+    elif key == ord("k") and cur_key_type == 0:
         # draw splitter sensor
         draw.reset()
         options = {"Pusher Poly": SelectType.draw, "Pusher Rectangle": SelectType.rectangle,
                    "Pusher Circle": SelectType.circle}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("l"):
+    elif key == ord("l") and cur_key_type == 0:
         # draw splitter sensor
         draw.reset()
         options = {"Splitter Poly": SelectType.draw, "Splitter Rectangle": SelectType.rectangle,
                    "Splitter Circle": SelectType.circle}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("/"):
+    elif key == ord("/") and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
         options = {"Fire Poly": SelectType.draw, "Fire Rectangle": SelectType.rectangle,
                    "Fire Circle": SelectType.circle}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("'"):
+    elif key == ord("'") and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
         options = {"Goal Poly": SelectType.draw, "Goal Rectangle": SelectType.rectangle,
                    "Goal Circle": SelectType.circle}
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("0"):
+    elif key == ord("0") and cur_key_type == 0:
         # pause physics
         phys.draw_objects["ground"] = not phys.draw_objects["ground"]
         msg.set_message("Draw Ground" + (" On" if phys.draw_objects["ground"] is True else " Off"))
         cur_key = "0"
 
-    elif key == ord("9"):
+    elif key == ord("9") and cur_key_type == 0:
         # pause physics
         phys.draw_objects["blocks"] = not phys.draw_objects["blocks"]
         msg.set_message("Draw Blocks" + (" On" if phys.draw_objects["blocks"] is True else " Off"))
         cur_key = "0"
 
-    elif key == ord("8"):
+    elif key == ord("8") and cur_key_type == 0:
         # pause physics
         phys.draw_objects["sensor"] = not phys.draw_objects["sensor"]
         msg.set_message("Draw Sensors" + (" On" if phys.draw_objects["sensor"] is True else " Off"))
         cur_key = "0"
 
-    elif key == ord("c"):
+    elif key == ord("c") and cur_key_type == 0:
         # pause physics
         phys.draw_objects["foreground"] = not phys.draw_objects["foreground"]
         msg.set_message("Draw Foreground" + (" On" if phys.draw_objects["foreground"] is True else " Off"))
         cur_key = "0"
 
-    elif key == ord("o"):
+    elif key == ord("o") and cur_key_type == 0:
         # pause physics
         draw.reset()
         phys.pause = not phys.pause
         msg.set_message("Pause" + (" On" if phys.pause is True else " Off"))
         cur_key = "o"
 
-    elif key == ord("*"):
+    elif key == ord("*") and cur_key_type == 0:
         # PICKLE BOARD
         name,blurb = save_gui()
         if not name == None:
@@ -249,17 +234,17 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
         # LOAD BOARD
         timer, phys, draw, board, msg = load_gui(timer, phys, draw, board, msg, persistant=False)
 
-    elif key == ord("5"):
+    elif key == ord("5") and cur_key_type == 0:
 
         load_options()
         phys.change_config(board = board)
 
-    elif key == ord("6"):
+    elif key == ord("6") and cur_key_type == 0:
 
         board, phys, msg = update_background(board, phys, msg)
 
 
-    elif key == ord("j"):
+    elif key == ord("j") and cur_key_type == 0:
         # draw joints
         draw.reset()
         options = {"Distance Joint": SelectType.straight_join, "Rope Joint": SelectType.straight_join,
@@ -269,9 +254,110 @@ def action_key_press(key, cur_key, draw, phys, msg, timer, board):
                    "Weld Joint": SelectType.straight_join, "Wheel Joint": SelectType.circle,
                    "Rotation Joint": SelectType.rotation_select, "Pulley": SelectType.d_straight_join}
 
-        cur_key = msg.auto_set(options, key)
+        cur_key = msg.auto_set(options, key, force)
 
-    return cur_key, draw, phys, msg, timer, board
+
+
+    elif key == 9:
+        #Tab key press, this switches to move mode
+        if cur_key_type == 0:
+            cur_key_type = 1
+            msg.set_message("Drawing Mode Enabled")
+            draw.reset()
+        else:
+            cur_key_type = 0
+            msg.set_message("Create Mode Enabled")
+            draw.reset()
+
+
+    #Drawing mode buttons
+
+    elif key == ord("1") and cur_key_type == 1:
+        # Mouse Move
+        draw.reset()
+        options = {"Screen Move": SelectType.null}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("2") and cur_key_type == 1:
+        # Mouse Move
+        draw.reset()
+        options = {"Center Clicked": SelectType.null}
+        cur_key = msg.auto_set(options, key, force)
+
+
+    elif key == ord("]") and cur_key_type == 1:
+        # draw polygon
+        draw.reset()
+        options = {"Fire Bullet": SelectType.bullet_direction}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("[") and cur_key_type == 1:
+        # draw polygon
+        draw.reset()
+        options = {"Choose Player": SelectType.null}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("3") and cur_key_type == 1:
+        # draw polygon
+
+        draw.reset()
+        options = {"Motor Forwards": SelectType.vector_direction}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("4") and cur_key_type == 1:
+        # draw polygon
+
+        draw.reset()
+        options = {"Motor Backwards": SelectType.vector_direction}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("9") and cur_key_type == 1:
+        # draw polygon
+
+        draw.reset()
+        options = {"Force": SelectType.vector_direction}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("0") and cur_key_type == 1:
+        # draw polygon
+
+        draw.reset()
+        options = {"Relative Force": SelectType.vector_direction}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("5") and cur_key_type == 1:
+        # draw polygon
+
+        draw.reset()
+        options = {"Rotate CCW": SelectType.vector_direction}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("6") and cur_key_type == 1:
+        # draw polygon
+
+        draw.reset()
+        options = {"Rotate CW": SelectType.vector_direction}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("7") and cur_key_type == 1:
+        # draw polygon
+
+        draw.reset()
+        options = {"Impulse": SelectType.vector_direction}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("8") and cur_key_type == 1:
+        # draw polygon
+
+        draw.reset()
+        options = {"Relative Impulse": SelectType.vector_direction}
+        cur_key = msg.auto_set(options, key, force)
+
+    #do move keypresses:
+    if cur_key_type == 1:
+        phys.do_keypress(key)
+
+    return cur_key_type, cur_key, draw, phys, msg, timer, board
 
 
 def rotate_block(draw, phys, event, x, y, type, board=None):
@@ -528,6 +614,65 @@ def fire_bullet(draw, phys, event, x, y, typer, board):
     return draw, phys
 
 
+def rotate_attach(draw, phys, event, x, y, type, board=None, direction=None):
+
+
+    if event == cv2.EVENT_LBUTTONDOWN:
+        draw, phys, clicked, coords = select_player(draw, phys, x, y, None, None, reset_if_not=True, pause=False)
+        if not clicked is None:
+            key = get_key_gui()
+            clicked.add_move(key, "rotate", direction)
+            draw.reset()
+
+    return draw, phys
+
+
+def attach_motor_spin(draw, phys, event, x, y, type, board=None, clockwise = False):
+
+    if event == cv2.EVENT_LBUTTONDOWN:
+        draw, phys, clicked, coords = select_player(draw, phys, x, y, None, None, reset_if_not=True, pause=False)
+        if not clicked is None:
+            joint = get_select_joints_with_motor(clicked)
+            key = get_key_gui()
+            joint_id = clicked.body.joints[int(joint.split("-")[0])].joint.userData
+            clicked.add_move(key, "motor forwards" if clockwise else "motor backwards", joint_id)
+            draw.reset()
+
+    return draw, phys
+
+def add_force(draw, phys, event, x, y, type, board=None, relative = False):
+
+    if type[1:] == SelectType.vector_direction.value:
+
+        draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
+                                                      allow_clicked=True, log_clicked=True,insist_clicked=True,
+                                                      allow_multiple=False, board= board)
+        if ans == True:
+            if len(draw.player_list) > 0:
+                for bl in draw.player_list:
+                    key = get_key_gui()
+                    bl.add_move(key, "relative force" if relative else "force", draw.vector)
+                    draw.reset()
+
+    return draw, phys
+
+def add_impulse(draw, phys, event, x, y, type, board=None, relative = False):
+
+    if type[1:] == SelectType.vector_direction.value:
+
+        draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
+                                                      allow_clicked=True, log_clicked=True,insist_clicked=True,
+                                                      allow_multiple=False, board= board)
+        if ans == True:
+            if len(draw.player_list) > 0:
+                for bl in draw.player_list:
+                    key = get_key_gui()
+                    bl.add_move(key, "relative impulse" if relative else "impulse", draw.vector)
+                    draw.reset()
+
+    return draw, phys
+
+
 def fire(draw, phys, event, x, y, type, board=None):
     if type[1:] == SelectType.vector_direction.value:
 
@@ -731,16 +876,17 @@ def delete(draw, phys, event, x, y, type, board=None):
     return draw, phys
 
 def create_terrain(draw,phys,board):
-    poly = create_floor_poly(4000,3000)
+    slope_times_min, slope_times_max, x_stride_min, x_stride_max, y_stride_min, y_stride_max = terrain_complexity_gui()
+    poly = create_floor_poly(board.b_width,board.b_height, slope_times_min, slope_times_max, x_stride_min, x_stride_max, y_stride_min, y_stride_max)
     phys.kill_all(terrain=True)
     coords = poly.exterior.coords
     last_coord = coords[-1]
-    x_trans = 0 - last_coord[0]
-    y_trans = board.board.shape[0] - last_coord[1]
-    coords = [[co[0] + x_trans, co[1] + y_trans ]for co in coords]
+    x_trans = (board.b_width - board.board.shape[1])/2
+    y_trans = ((board.board.shape[0] - last_coord[1])/2)-20
+    coords = [[co[0]-x_trans, co[1] -100 + y_trans ]for co in coords]
 
-    phys.fractal_create(coords,terrain=True)
-
+    phys.fractal_create(coords, terrain=True)
+    phys.merge_blocks()
     col = [1, 92, 40]
     for bl in phys.block_list:
         if bl.is_terrain == True:
@@ -1422,15 +1568,15 @@ def move_screen(draw, board, x=None, y=None, event=None):
 
     elif event == cv2.EVENT_MOUSEMOVE and draw.status == "screen":
         draw.log_point(x, y, "screen")
-        back = -2
-        while abs(back) < len(draw.locations):
-            if calculateDistance(draw.locations[-1][0], draw.locations[-1][1], draw.locations[back][0], draw.locations[back][1]) > 2:
-                board.translation[0] += draw.locations[-1][0] - draw.locations[back][0]
-                board.translation[1] += draw.locations[-1][1] - draw.locations[back][1]
-                break
-            back -= 1
-            if back < -5:
-                break
+        back = 0
+        # while abs(back) < len(draw.locations):
+        if calculateDistance(draw.locations[-1][0], draw.locations[-1][1], draw.locations[back][0], draw.locations[back][1]) > 2:
+            board.translation[0] += draw.locations[-1][0] - draw.locations[back][0]
+            board.translation[1] += draw.locations[-1][1] - draw.locations[back][1]
+        #     break
+        # back -= 1
+        #     if back < -5:
+        #         break
 
     elif event == cv2.EVENT_LBUTTONUP:
         draw.reset()

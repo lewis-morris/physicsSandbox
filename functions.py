@@ -16,6 +16,27 @@ from shapely.geometry.polygon import Polygon
 from shapely import affinity
 from configobj import ConfigObj
 
+
+def rotate_around_point_highperf(xy, radians, origin=(0, 0)):
+    """Rotate a point around a given point.
+
+    I call this the "high performance" version since we're caching some
+    values that are needed >1 time. It's less readable than the previous
+    function but it's faster.
+    """
+    x, y = xy
+    offset_x, offset_y = origin
+    adjusted_x = (x - offset_x)
+    adjusted_y = (y - offset_y)
+    cos_rad = math.cos(radians)
+    sin_rad = math.sin(radians)
+    qx = offset_x + cos_rad * adjusted_x + sin_rad * adjusted_y
+    qy = offset_y + -sin_rad * adjusted_x + cos_rad * adjusted_y
+
+    return qx, qy
+
+
+
 def get_config_object(name):
     config = ConfigObj(name)
     if config == {}:
@@ -54,7 +75,7 @@ def fragment_poly(conts):
         final_contours.append(cn)
     return final_contours
 
-def create_floor_poly(max_width, max_height):
+def create_floor_poly(max_width, max_height,slope_times_min,slope_times_max,x_stride_min,x_stride_max,y_stride_min,y_stride_max):
 
     coords = [[0, 0], [400, 0]]
     slope_times = 0
@@ -62,14 +83,17 @@ def create_floor_poly(max_width, max_height):
     slope = random.randint(0, 4)
 
     while True:
-        x_rand = random.randint(20, 100)
+        if random.randint(0, 10) == 10:
+            x_rand = random.randint(int(x_stride_max * 1.3), int(x_stride_max * 2))
+        else:
+            x_rand = random.randint(x_stride_min, x_stride_max)
 
         if slope_times == 0:
             if slope < 4:
                 slope = 4
             else:
                 slope = random.randint(0, 4)
-            slope_times = random.randint(2, 5)
+            slope_times = random.randint(slope_times_min, slope_times_max)
 
         if slope == 4:
             y_rand = 0
@@ -77,9 +101,9 @@ def create_floor_poly(max_width, max_height):
         else:
 
             if random.randint(0, 10) == 10:
-                y_rand = random.randint(30, 70)
+                y_rand = random.randint(int(y_stride_max*1.3), int(y_stride_max*2))
             else:
-                y_rand = random.randint(3, 30)
+                y_rand = random.randint(y_stride_min, y_stride_max)
 
             y_rand = y_rand if slope < 2 else -y_rand
 
@@ -87,7 +111,7 @@ def create_floor_poly(max_width, max_height):
         new_coords[0] += x_rand
         new_coords[1] += y_rand*-1
 
-        if not new_coords[1] > max_height:
+        if not new_coords[1] > max_height-100 or not new_coords[1] < 100:
             coords.append(new_coords)
 
         slope_times -= 1
@@ -97,7 +121,7 @@ def create_floor_poly(max_width, max_height):
     #     if new_coords[0] > 2000
     #     min_h = -2000
 
-    min_y = max([co[1] for co in coords]) + 100
+    min_y = max([co[1] for co in coords]) + 50
 
     coords.append([coords[-1][0], min_y])
     coords.append([0, min_y])

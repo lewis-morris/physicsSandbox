@@ -11,11 +11,13 @@ from shapely.geometry import Polygon, LineString
 from shapely.ops import unary_union
 from draw_functions import get_enlongated_line, get_poly_from_two_rectangle_points
 from functions import get_random_col, get_config, convert_to_mks, convert_from_mks, get_poly_from_ob, dent_contour, \
-    fragment_poly, calculateDistance, get_angle
+    fragment_poly, calculateDistance, get_angle,rotate_around_point_highperf
 import gc
 from Box2D import *
 import pickle
 from configobj import ConfigObj
+
+from shapely.ops import cascaded_union
 
 config = ConfigObj('config_default.cfg')
 
@@ -26,6 +28,9 @@ def load(height=800, width=1200, b_height = None, b_width = None):
     timer = Timer(get_config("screen", "fps"))
     board = Board()
     board.board_name = "base"
+    board.b_height = b_height
+    board.b_width = b_width
+
     phys = Physics(get_config("physics", "gravity"))
     draw = Draw()
     block_accuracy = get_config("blocks", "block_accuracy")
@@ -124,11 +129,21 @@ def load_state(pickle_name):
 
     return timer, phys, draw, board, msg, pickle_dic["blurb"]
 
+class Game():
+    def __init__(self,board,draw,phys,msg,timer,palette):
+        self.board = board
+        self.draw = draw
+        self.phys = phys
+        self.msg = msg
+        self.timer = timer
+        self.palette = palette
 
 class Palette():
 
     def __init__(self):
         self.palettes = [
+            ["256676", "bde267", "972b2d", "5bef8f", "983888", "14bae1", "db11ac", "2ca559", "e88358", "737fc9",
+             "6f7d43", "c6c0fe", "2f4285", "c582ef", "84ee15"],
             ["48bf8e", "235e31", "a1def0", "059dc5", "154975", "bf83f8", "474cd3", "3a91fb", "913e88", "f372a8",
              "7c08c5", "baa3c6", "fb0998", "e24afc", "b1e632"],
             ["52ef99", "0a4f4e", "62d7e1", "369094", "b9cf84", "12982d", "8ddc1c", "658114", "fda547", "7e2640",
@@ -143,8 +158,6 @@ class Palette():
              "257950", "a18ff8", "5920af", "cf60f3", "f4d16a"],
             ["72e5ef", "274c56", "34f199", "b12941", "a9d541", "b27373", "498e94", "ccbff5", "544793", "c86be1",
              "67902f", "f1bb99", "6c3640", "bf711e", "34f50e"],
-            ["256676", "bde267", "972b2d", "5bef8f", "983888", "14bae1", "db11ac", "2ca559", "e88358", "737fc9",
-             "6f7d43", "c6c0fe", "2f4285", "c582ef", "84ee15"],
             ["52ef99", "9a2a06", "4be8f9", "b12060", "a7e831", "214d4e", "c3de9b", "67577f", "f1bb99", "5920af",
              "63a122", "d38ffd", "658b83", "f37a6b", "0ba47e"],
             ["52ef99", "a33e12", "64baaa", "972554", "bce333", "116966", "e4bfab", "41369e", "e3a0fa", "67902f",
@@ -392,6 +405,75 @@ class Physics():
         self.pause = False
         self.options = {}
         self.change_config(config=config)
+        self.move_keys_list = {}
+
+    def do_keypress(self,key):
+        """
+        Used to fire the allocated moves to players from predefined keys supplier by user.
+        :param key:
+        :return:
+        """
+        for bl in self.block_list:
+            if bl.keys != {}:
+                for k,v in bl.keys.items():
+                    if ord(k) == key:
+                        for val in v:
+
+                            if val[0] == "impulse":
+                                vec = np.array(val[1]) #- np.array([bl.body.linearVelocity.x,bl.body.linearVelocity.y])
+                                impulse = bl.body.mass * vec * val[2]
+
+                                bl.body.ApplyLinearImpulse(impulse, bl.body.worldCenter, wake=True)
+
+                            elif val[0] == "force":
+
+                                vec = np.array(val[1]) #- np.array([bl.body.linearVelocity.x,bl.body.linearVelocity.y])
+                                impulse = bl.body.mass * vec * val[2]
+
+                                bl.body.ApplyForce(impulse, bl.body.worldCenter, wake=True)
+
+                            elif val[0] == "relative impulse":
+
+                                vec = np.array(val[1]) #- np.array([bl.body.linearVelocity.x,bl.body.linearVelocity.y])
+                                impulse = bl.body.mass * vec * val[2]
+
+                                rotated = rotate_around_point_highperf(impulse,bl.body.angle*-1)
+                                bl.body.ApplyLinearImpulse(rotated, bl.body.worldCenter, wake=True)
+
+                            elif val[0] == "relative force":
+
+                                vec = np.array(val[1]) #- np.array([bl.body.linearVelocity.x,bl.body.linearVelocity.y])
+                                impulse = bl.body.mass * vec * val[2]
+
+                                rotated = rotate_around_point_highperf(impulse,bl.body.angle*-1)
+                                bl.body.ApplyLinearImpulse(rotated, bl.body.worldCenter, wake=True)
+
+                            elif val[0] == "rotate":
+
+                                #bl.body.angle += (0.1 if val[2] == "CCW" else -0.1)
+                                try:
+                                    bl.body.ApplyAngularImpulse(impulse=(-0.1 if val[1] == "CCW" else 0.1)*val[2], wake=True)
+                                    bl.body.ApplyTorque(torque=(-0.3 if val[1] == "CCW" else 0.3)*val[2], wake=True)
+                                except IndexError:
+                                    print("Block missing error - TODO fix this")
+                            elif "motor" in val[0]:
+                                for jn in bl.body.joints:
+                                    if not jn.joint.userData is None:
+                                        if jn.joint.userData["id"] == val[1]["id"]:
+                                            jn.joint.motorEnabled = True
+                                            if val[0] == "motor forwards":
+                                                if jn.joint.motorSpeed > 0:
+                                                    jn.joint.motorSpeed *= -1
+                                            elif val[0] == "motor backwards":
+                                                if jn.joint.motorSpeed < 0:
+                                                    jn.joint.motorSpeed *= -1
+                    else:
+                        #turn off motors if not pressed
+                        for jn in bl.body.joints:
+                            if not jn.joint.userData is None:
+                                if jn.joint.userData["id"] == val[1]["id"]:
+                                    jn.joint.motorEnabled = False
+
 
     def impulse_player(self, key):
 
@@ -433,7 +515,7 @@ class Physics():
                     vec[0] = vec[0] - player[0].body.linearVelocity.x
 
                 vec = vec * player[0].body.mass
-
+                vec = rotate_around_point_highperf(vec,player[0].body.angle*-1)
                 move_func(vec, player[0].body.worldCenter, wake=True)
             else:
                 print("Player impulse error")
@@ -992,6 +1074,7 @@ class Physics():
 
         if force_static_block:
             self.block_list[-1].is_terrain = True
+            self.block_list[-1].body.awake = False
 
         self.block_list[-1].body.fixtures[0].restitution = rest
         self.block_list[-1].body.fixtures[0].density = density
@@ -1003,6 +1086,22 @@ class Physics():
             self.block_list[-1].body.fixtures[0].sensor = True
 
         return True
+
+    def merge_blocks(self,bl_list=None):
+
+        if bl_list is None:
+            bls = [bl for bl in self.block_list if bl.is_terrain]
+        else:
+            bls = bl_list
+
+        base_bl = bls.pop(0)
+        from Box2D import b2PolygonShape
+        for i in np.arange(len(bls) - 1, -1, -1):
+            bl = bls[i]
+            #bl.body.fixtures[0].shape
+            shape = [(bl.body.transform * v) for v in  bl.body.fixtures[0].shape.vertices]
+            base_bl.body.CreateFixture(b2FixtureDef(shape=b2PolygonShape(vertices=shape), restitution=bl.body.fixtures[0].restitution, density =bl.body.fixtures[0].density,friction =bl.body.fixtures[0].friction))
+            self.delete(bl)
 
     def check_sensor_actions(self):
         # loop as a range as new blocks could be created then it would also split thoes possbily
@@ -1186,7 +1285,7 @@ class Physics():
                                        bodyB=b.body,
                                        anchor=(convert_to_mks(pos[0], pos[1]) if convert else pos))
 
-        pass
+        self.world.joints[-1].userData = {"id":''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
 
     def create_mouse_joint(self, a, x, y):
 
@@ -1211,6 +1310,8 @@ class Physics():
         self.world.CreatePrismaticJoint(bodyA=a.body, bodyB=b.body, anchor=convert_to_mks(anchor[0], anchor[1]),
                                         axis=vector, enableLimit=True, upperTranslation=convert_to_mks(distance))
 
+        self.world.joints[-1].userData = {"id":''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
+
     def create_pulley(self, a, b, lines):
         lines = [convert_to_mks(x[0], x[1]) for x in lines]
         self.world.CreatePulleyJoint(bodyA=a.body,
@@ -1222,6 +1323,8 @@ class Physics():
                                      ratio=1)
         # maxLengthA=calculateDistance(lines[0][0], lines[0][1], lines[1][0], lines[1][1]),
         # maxLengthB=calculateDistance(lines[2][0], lines[2][1], lines[3][0], lines[3][1]))
+
+        self.world.joints[-1].userData = {"id":''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
 
     def create_chain(self, a, b, lines, stretchy=False):
         last_ob = 0
@@ -1437,8 +1540,13 @@ class Physics():
 
         # destroy bodies
         del self.block_list[self.block_list.index(bl)]
+
+        #remove from the keys move list if found.
+
         self.world.DestroyBody(bl.body)
+
         del bl
+
         gc.collect(0)
 
     def check_off(self, board):
@@ -1503,7 +1611,7 @@ class Ball():
         self.body = body
 
         self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False,
-                              "player_allow_impulse": True, "bullet_actions": None, "bullets_destory_ground": False, "kill":False}
+                              "player_allow_impulse": True, "bullet_actions": None, "bullets_destory_ground": False, "kill":False,"ground_touches":0}
 
         self.type = poly_type
         self.pos = None
@@ -1522,6 +1630,7 @@ class Ball():
         self.old_id = None
         self.force_draw = draw
 
+        self.sensor = False
         self.foreground = False
         self.booster = None
         self.goal = False
@@ -1541,6 +1650,7 @@ class Ball():
         self.inv_mask = None
         self.sprite_on = False
 
+        self.keys = {}
 
         if set_sprite is True:
             self.set_sprite()
@@ -1554,6 +1664,22 @@ class Ball():
             str += f"Joint: {type(x.joint)} bodyA id {x.joint.bodyA.userData['ob'].id} oldId {x.joint.bodyA.userData['ob'].old_id} bodyB id {x.joint.bodyB.userData['ob'].id} oldId {x.joint.bodyB.userData['ob'].old_id}\n"
 
         return str
+
+    def add_move(self, key, type, extra):
+        """
+        Used to add keys and actions to be fired on keypress
+
+        :param key:
+        :param id:
+        :param type:
+        :param extra:
+        :return:
+        """
+
+        if key in self.keys:
+            self.keys[key].append([type, extra, 1, extra])
+        else:
+            self.keys[key] = [[type, extra, 1, extra]]
 
     def get_poly(self):
         return get_poly_from_ob(self, 3)
@@ -1688,7 +1814,7 @@ class Block():
     def __init__(self, body, static_shape=True, set_sprite=False, sprite=None, draw_static=True, poly_type=None):
         self.body = body
         self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False,
-                              "player_allow_impulse": True, "bullet_actions": None, "bullets_destory_ground": False, "kill":False}
+                              "player_allow_impulse": True, "bullet_actions": None, "bullets_destory_ground": False, "kill":False,"ground_touches":0}
         self.type = poly_type
         self.pos = None
         self.current_position = []
@@ -1705,6 +1831,7 @@ class Block():
 
         self.times_off = 0
 
+        self.sensor = False
         self.booster = None
         self.splitter = None
         self.forcer = None
@@ -1735,6 +1862,10 @@ class Block():
         self.active = True
 
         self.id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))
+        self.base_id = ''
+
+        self.keys = {}
+
         self.old_id = None
 
     def __str__(self):
@@ -1743,6 +1874,22 @@ class Block():
             str += f"Joint: {type(x.joint)} bodyA id {x.joint.bodyA.userData['ob'].id} oldId {x.joint.bodyA.userData['ob'].old_id} bodyB id {x.joint.bodyB.userData['ob'].id} oldId {x.joint.bodyB.userData['ob'].old_id}\n"
 
         return str
+
+    def add_move(self, key, type, extra):
+        """
+        Used to add keys and actions to be fired on keypress
+
+        :param key:
+        :param id:
+        :param type:
+        :param extra:
+        :return:
+        """
+
+        if key in self.keys:
+            self.keys[key].append([type, extra, 1, extra])
+        else:
+            self.keys[key] = [[type, extra, 1, extra]]
 
     def get_poly(self):
         return get_poly_from_ob(self, 3)
@@ -1777,8 +1924,15 @@ class Block():
 
     def get_current_pos(self, board):
 
-        shapes = [(self.body.transform * v) for v in self.body.fixtures[0].shape.vertices]
-        shapes = [(convert_from_mks(val[0], val[1])) for val in shapes]
+        poly = []
+        for fix in self.body.fixtures:
+            shapes = [(self.body.transform * v) for v in fix.shape.vertices]
+            shapes = [(convert_from_mks(val[0], val[1])) for val in shapes]
+
+            poly.append(Polygon(shapes))
+
+
+        shapes = list(cascaded_union(poly).exterior.coords)
 
         self.translated_position = np.array(shapes) + board.translation
         self.current_position = np.array(shapes)
@@ -1916,6 +2070,8 @@ class Board():
         self.translation = np.array([0,0])
         self.x_trans_do = None
         self.y_trans_do = None
+        self.b_height = None
+        self.b_width = None
 
     def reset_me(self, timer, phys, board, draw, msg, force=False):
         if self.reset or force:
@@ -2042,17 +2198,20 @@ class Messenger:
         self.pannel[2:-2, -105:-4] = (210, 210, 210)
         self.display_pannel_pause = self.pannel.copy()
 
-    def auto_set(self, options, key):
+    def auto_set(self, options, key, force):
         messages = [k for k, v in options.items()]
         types = [v for k, v in options.items()]
         keys = [chr(key) + ty.value for ty in types]
 
-        if not self.old_message in messages:
+        if force:
+            self.old_message = self.message
+        elif not self.old_message in messages:
             self.old_message = None
+
         if self.old_message == None:
             index = 0
         else:
-            index = messages.index(self.old_message) + 1
+            index = messages.index(self.old_message) + (1 if not force else 0)
             if index > len(messages) - 1:
                 index = 0
         self.set_message(messages[index], set_old=True)
@@ -2133,8 +2292,8 @@ class Contacter(b2ContactListener):
 
         if "ob" in contact.fixtureA.body.userData and "ob" in contact.fixtureB.body.userData:
             # check for if off ground and allowed another jump
-            if contact.fixtureA.body.userData["ob"].is_player and contact.fixtureB.body.userData["ob"].static:
-                contact.fixtureA.body.userData["player_allow_impulse"] = True
+            if contact.fixtureB.body.userData["ob"].static and not contact.fixtureB.body.userData["ob"].sensor is True:
+                contact.fixtureB.body.userData["ground_touches"] +=1
 
             # is bullet and has hit dynamic block?
             is_bullet = contact.fixtureA.body.userData["ob"].bullet
@@ -2152,8 +2311,8 @@ class Contacter(b2ContactListener):
 
         if "ob" in contact.fixtureB.body.userData and "ob" in contact.fixtureA.body.userData:
             # check for if off ground and allowed another jump
-            if contact.fixtureB.body.userData["ob"].is_player and contact.fixtureA.body.userData["ob"].static:
-                contact.fixtureB.body.userData["player_allow_impulse"] = True
+            if contact.fixtureA.body.userData["ob"].static and not contact.fixtureA.body.userData["ob"].sensor is True:
+                contact.fixtureB.body.userData["ground_touches"] += 1
 
             # is bullet and has hit dynamic block?
             is_bullet = contact.fixtureB.body.userData["ob"].bullet
@@ -2172,11 +2331,11 @@ class Contacter(b2ContactListener):
 
         #check if the player has hit the boundry of the map
         if "ob" in contact.fixtureB.body.userData and "ob" in contact.fixtureA.body.userData:
-            if contact.fixtureA.body.userData["ob"].is_boundry and not contact.fixtureB.body.userData["ob"].is_player:
+            if contact.fixtureA.body.userData["ob"].is_boundry:
                 contact.fixtureB.body.userData["kill"] = True
 
         if "ob" in contact.fixtureA.body.userData and "ob" in contact.fixtureB.body.userData:
-            if contact.fixtureB.body.userData["ob"].is_boundry and not contact.fixtureA.body.userData["ob"].is_player:
+            if contact.fixtureB.body.userData["ob"].is_boundry:
                 contact.fixtureA.body.userData["kill"] = True
 
 
@@ -2188,9 +2347,10 @@ class Contacter(b2ContactListener):
 
     def EndContact(self, contact):
 
+        #check ground touches
         if "ob" in contact.fixtureA.body.userData and "ob" in contact.fixtureB.body.userData:
-            if contact.fixtureA.body.userData["ob"].is_player and contact.fixtureB.body.userData["ob"].static:
-                contact.fixtureA.body.userData["player_allow_impulse"] = False
+            if contact.fixtureB.body.userData["ob"].static and not contact.fixtureB.body.userData["ob"].sensor is True:
+                contact.fixtureA.body.userData["ground_touches"] -= 1
         if "ob" in contact.fixtureB.body.userData and "ob" in contact.fixtureA.body.userData:
-            if contact.fixtureB.body.userData["ob"].is_player and contact.fixtureA.body.userData["ob"].static:
-                contact.fixtureB.body.userData["player_allow_impulse"] = False
+            if contact.fixtureA.body.userData["ob"].static and not contact.fixtureA.body.userData["ob"].sensor is True:
+                contact.fixtureB.body.userData["ground_touches"] -= 1
