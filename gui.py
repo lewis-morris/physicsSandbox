@@ -4,6 +4,7 @@ import PySimpleGUI as sg
 import os
 
 import cv2
+from Box2D import b2Vec2
 from configobj import ConfigObj
 import numpy as np
 
@@ -21,24 +22,33 @@ def getVariableName(variable):
         if v == variable:
             return k
 
+
 def get_key_gui():
     layout = [[sg.Text("Which key should fire this event?")],
-              [sg.InputText("",key="input"),sg.Button("Ok",enable_events=True,key="Button")]]
-    window = sg.Window('Key Allocation',layout, disable_close=True)
+              [sg.InputText("", key="input"), sg.Button("Ok", enable_events=True, key="Button"),sg.Button("Close", enable_events=True, key="close")]]
+    window = sg.Window('Key Allocation', layout)
 
     while True:
-        event,values = window.read()
+        event, values = window.read(1)
 
         if event == "Button":
             if values["input"] == "":
                 sg.popup("Please enter a key value")
             elif len(values["input"]) > 1:
                 sg.popup("Please only enter 1 key")
-            elif values["input"] in ["[","]","1","2","3","4","5","6","7","8","9"]:
+            elif values["input"] in ["[", "]", "1", "2", "3", "4", "5", "6", "7", "8", "9"]:
                 sg.popup("Reserved key selected, please choose another")
+
             else:
                 window.close()
                 return values["input"]
+
+        elif event == sg.WIN_CLOSED:
+            window.close()
+            return None
+        elif event == "close":
+            window.close()
+            return None
 
 def get_toolbar():
     gameplay = {"Reset": ["r", SelectType.null, "Reset the board to defaults (r)"],
@@ -95,28 +105,19 @@ def get_toolbar():
                                "Polygon draw of sensor that pushes colliding blocks in set direction (k toggle)"],
                "Pusher Rectangle": ["k", SelectType.rectangle,
                                     "Rectangle draw of sensor that pushes colliding blocks in set direction (k toggle)"],
-               "Pusher Circle": ["k", SelectType.circle,
-                                 "Circle draw of sensor that pushes colliding blocks in set direction (k toggle)"],
 
                "Splitter Poly": ["l", SelectType.draw,
                                  "Polygon draw of sensor that fragments colliding blocks (l toggle)"],
                "Splitter Rectangle": ["l", SelectType.rectangle,
                                       "Rectangle draw of sensor that pushes fragments blocks (l toggle)"],
-               "Splitter Circle": ["l", SelectType.circle,
-                                   "Circle draw of sensor that pushes fragments blocks (l toggle)"],
-
                "Fire Poly": ["/", SelectType.draw,
                              "Polygon draw of sensor that fires fragments blocks in set direction (/toggle)"],
                "Fire Rectangle": ["/", SelectType.rectangle,
                                   "Rectangle draw of sensor that fires fragments blocks in set direction (/ toggle)"],
-               "Fire Circle": ["/", SelectType.circle,
-                               "Circle draw of sensor that fires fragments blocks in set direction (/ toggle)"],
 
                "Goal Poly": ["'", SelectType.draw, "Polygon draw of sensor that destroys blocks ('k' toggle)"],
                "Goal Rectangle": ["'", SelectType.rectangle,
-                                  "Rectangle draw of sensor that destroys fragments blocks ('k' toggle)"],
-               "Goal Circle": ["'", SelectType.circle,
-                               "Circle draw of sensor that destroys fragments blocks (' toggle)"]}
+                                  "Rectangle draw of sensor that destroys fragments blocks ('k' toggle)"]}
 
     screen_drawing = {"Draw Ground": ["0", SelectType.null, "Toggle drawing of ground blocks on/off ('0' toggle)"],
                       "Draw Blocks": ["9", SelectType.null, "Toggle drawing of dynamic blocks on/off ('9' toggle)"],
@@ -124,7 +125,9 @@ def get_toolbar():
                       "Draw Foreground": ["c", SelectType.null,
                                           "Toggle drawing of foreground elements on/off ('c' toggle)"]}
 
-    joints = {"Distance Joint": ["j", SelectType.straight_join,
+    joints = {"Merge Blocks": ["j", SelectType.player_select, "Merge two players together"],
+
+              "Distance Joint": ["j", SelectType.straight_join,
                                  "Create a joint that attempts to keep a set fixed distance between two players (j toggle)"],
               "Rope Joint": ["j", SelectType.straight_join,
                              "Create a joint that constrains two blocks to a maximum distance but can be less (j toggle)"],
@@ -179,9 +182,12 @@ def get_toolbar():
                "Relative Impulse": ["8", SelectType.select, "Move the screen position with click drag (m toggle)"]}
     force = {"Force": ["9", SelectType.select, "Move the screen position with click drag (m toggle)"],
              "Relative Force": ["0", SelectType.select, "Move the screen position with click drag (m toggle)"]}
+    keys = {"Change Keys": ["`", SelectType.select, "Get keys"]}
 
-    sections = [translation, player, motor, rotate, impulse, force]
-    section_names = ['Screen', "Player", 'Motors', "Rotate", "Impulse", "Force"]
+    sections = [translation, player, motor, rotate, impulse, force, keys]
+
+    section_names = ['Screen', "Player", 'Motors', "Rotate", "Impulse", "Force", "Keys"]
+
     layout_2 = []
 
     for section, name in zip(sections, section_names):
@@ -209,17 +215,130 @@ def get_toolbar():
 
     return window
 
+
+def get_keys_window(clicked, selected=0):
+    action_items = []
+    for keys_item, items_item in clicked.keys.items():
+        for action in items_item:
+            action_items.append(f"{keys_item} : {action['type']} : {action['id']}")
+
+    if len(action_items) == 0:
+        sg.popup("There are no keys allocated to this block - exiting.")
+        return None, None
+    else:
+        list_col = sg.Column([[sg.Listbox(values=action_items, default_values=action_items[selected], size=(30, 3),
+                                          enable_events=True, key="listbox")],
+                              [sg.Button("Delete", key="delete"), sg.Button("Exit", key="exit")]])
+
+    i = 0
+    other_layout = []
+    for k, v in clicked.keys.items():
+        for action in v:
+            if selected == i:
+                for key, val in action.items():
+                    disabled = False
+
+                    if key in ["id", "type"]:
+                        disabled = True
+                    elif not val in ["impulse", "relative impulse", "force", "relative force"] and key == "limit_speed":
+                        disabled = True
+
+                    if type(val) is bool:
+                        other_layout.append(
+                            [sg.Text(key.replace("_", " ")), sg.Checkbox(text="On?", default=val, key=key)])
+
+                    elif type(val) == b2Vec2:
+                        pass
+                    elif type(val) is tuple:
+                        val = list(val)
+                        val[0] = round(val[0], 3)
+                        val[1] = round(val[1], 3)
+                        other_layout.append(
+                            [sg.Text(key.replace("_", " ")), sg.InputText(str(val), key=key, disabled=disabled)])
+                    else:
+                        other_layout.append(
+                            [sg.Text(key.replace("_", " ")), sg.InputText(val, key=key, disabled=disabled)])
+
+            i += 1
+
+    other_layout.append([sg.Button("Save", key="save")])
+    other_col = sg.Column(other_layout)
+
+    window = sg.Window("Keys", [[list_col, other_col]])
+
+    return window, action_items
+
+
+def get_clicked_keys_gui(clicked):
+    pos = None
+    window, action_items = get_keys_window(clicked, 0)
+    if window is None:
+        window.close()
+        return
+
+    while True:
+        event, values = window.read()
+
+        if event == "delete":
+            items = [val.strip() for val in values["listbox"][0].split(":")]
+            key = items[0]
+            id = items[2]
+            for k, v in clicked.keys.items():
+                if k == key:
+                    for action in v:
+                        if action["id"] == id:
+                            del clicked.keys[k][clicked.keys[k].index(action)]
+
+                            window, action_items = get_keys_window(clicked, 0)
+                            if window is None:
+                                window.close()
+                                return
+
+        elif event == "listbox":
+            index_clicked = action_items.index(values["listbox"][0])
+            pos = window.CurrentLocation()
+            window.close()
+            window, action_items = get_keys_window(clicked, index_clicked)
+            event, values = window.read(1)
+            window.move(pos[0], pos[1])
+
+        elif event == "save":
+            clicked_item = action_items[action_items.index(values["listbox"][0])]
+            clicked_item = [val.strip() for val in clicked_item.split(":")]
+            for k, v in clicked.keys.items():
+                if k == clicked_item[0]:
+                    for i, val in enumerate(v):
+                        if val["id"] == clicked_item[2]:
+                            for valk, valv in values.items():
+                                if valk in clicked.keys[k][i].keys():
+                                    if type(valv) is bool:
+                                        clicked.keys[k][i][valk] = valv
+                                    elif valv.find("[") > -1:
+                                        clicked.keys[k][i][valk] = tuple(
+                                            [float(x) for x in valv.replace("[", "").replace("]", "").split(",")])
+                                    else:
+                                        try:
+                                            clicked.keys[k][i][valk] = float(valv)
+                                        except:
+                                            clicked.keys[k][i][valk] = valv
+            sg.popup("Block updated")
+
+        elif event == "exit":
+            window.close()
+            return
+
+
 def enable_all(toolbar):
     for k, v in toolbar.AllKeysDict.items():
         if type(v) is sg.Button:
             v.update(disabled=False)
     return toolbar
 
+
 def deal_with_toolbar_event(toolbar, cur_key, cur_key_type, draw, msg):
     force = False
     event, values = toolbar.read(1)
     key = None
-
 
     if event == "expand":
         toolbar["options"].Update(visible=not toolbar["options"].Visible)
@@ -243,7 +362,7 @@ def deal_with_toolbar_event(toolbar, cur_key, cur_key_type, draw, msg):
         draw.reset()
         msg.set_message(event)
         key = data[0]
-        force=True
+        force = True
 
     else:
         event = None
@@ -535,6 +654,7 @@ def load_gui(timer=None, phys=None, draw=None, board=None, msg=None, persistant=
             if values["height"].isnumeric() and values["width"].isnumeric():
                 timer, phys, board, draw, msg = load(height=int(values["height"]), width=int(values["width"]),
                                                      b_height=int(values["bheight"]), b_width=int(values["bwidth"]))
+
                 msg.set_message("New Board")
                 break
             else:
@@ -706,7 +826,7 @@ def update_block_values(values, block):
                     block.set_sprite()
             elif hasattr(block.body, k):
                 setattr(block.body, k, v)
-            elif hasattr(block.body.fixtures[0], k):
+            if hasattr(block.body.fixtures[0], k):
                 setattr(block.body.fixtures[0], k, v)
     return block
 
@@ -908,12 +1028,12 @@ def update_background(board, phys, msg):
     window.close()
     return board, phys, msg
 
-def get_select_joints_with_motor(clicked):
 
+def get_select_joints_with_motor(clicked):
     if len(clicked.body.joints) > 0:
         layout = [[sg.Text("Please select the joint you want to attach key to")]]
         items = []
-        for i,jn in enumerate(clicked.body.joints):
+        for i, jn in enumerate(clicked.body.joints):
             joint = jn.joint
             lower_attributes = [v.lower() for v in dir(joint) if
                                 not v.startswith("_") and v not in ["this", "next", "thisown", "type", "userData"]]
@@ -924,11 +1044,11 @@ def get_select_joints_with_motor(clicked):
                 except:
                     pass
         if len(items) > 0:
-            layout.append([sg.Listbox(values=(items), size=(30, 3),key="listbox",enable_events=True)])
+            layout.append([sg.Listbox(values=(items), size=(30, 3), key="listbox", enable_events=True)])
 
             window = sg.Window('Background Settings', layout)
             while True:
-                event,values = window.read(1)
+                event, values = window.read(1)
 
                 if event == "listbox":
                     window.close()
@@ -938,36 +1058,43 @@ def get_select_joints_with_motor(clicked):
 
 
 def terrain_complexity_gui():
+    layout = [[sg.Text("Slope Times", relief=sg.RELIEF_GROOVE)],
+              [sg.Text("The amount of times to go in a given direction before POSSIBLY changing direction",
+                       font="TkHeadingFont 8")],
+              [sg.Text("Min"), sg.InputText(4, key="slope_times_min", size=(5, 1)), sg.Text("Max"),
+               sg.InputText(20, key="slope_times_max", size=(5, 1))],
+              [sg.Text("X Stride", relief=sg.RELIEF_GROOVE)],
+              [sg.Text("The possible min/max stride length of each X movement", font="TkHeadingFont 8")],
+              [sg.Text("Min"), sg.InputText(20, key="x_stride_min", size=(5, 1)), sg.Text("Max"),
+               sg.InputText(80, key="x_stride_max", size=(5, 1))],
+              [sg.Text("Y Stride", relief=sg.RELIEF_GROOVE)],
+              [sg.Text("The possible min/max stride length of each Y movement", font="TkHeadingFont 8")],
+              [sg.Text("Min"), sg.InputText(5, key="y_stride_min", size=(5, 1)), sg.Text("Max"),
+               sg.InputText(20, key="y_stride_max", size=(5, 1))],
+              [sg.Button("Generate", key="button")]]
 
-    layout = [[sg.Text("Slope Times",relief=sg.RELIEF_GROOVE)],
-              [sg.Text("The amount of times to go in a given direction before POSSIBLY changing direction",font="TkHeadingFont 8")],
-              [sg.Text("Min"),sg.InputText(4,key="slope_times_min",size=(5,1)),sg.Text("Max"),sg.InputText(20,key="slope_times_max",size=(5,1))],
-              [sg.Text("X Stride",relief=sg.RELIEF_GROOVE)],
-              [sg.Text("The possible min/max stride length of each X movement",font="TkHeadingFont 8")],
-              [sg.Text("Min"),sg.InputText(20, key="x_stride_min",size=(5,1)),sg.Text("Max"),sg.InputText(80,key="x_stride_max",size=(5,1))],
-              [sg.Text("Y Stride",relief=sg.RELIEF_GROOVE)],
-              [sg.Text("The possible min/max stride length of each Y movement",font="TkHeadingFont 8")],
-              [sg.Text("Min"), sg.InputText(5, key="y_stride_min",size=(5,1)), sg.Text("Max"), sg.InputText(20, key="y_stride_max",size=(5,1))],
-              [sg.Button("Generate",key="button")]]
-
-    window = sg.Window("Generate Terrain",layout)
+    window = sg.Window("Generate Terrain", layout)
 
     while True:
         event, values = window.read()
 
         if event == "button":
-            if int(values["slope_times_min"]) > int(values["slope_times_max"]) or int(values["slope_times_max"]) < int(values["slope_times_min"]):
+            if int(values["slope_times_min"]) > int(values["slope_times_max"]) or int(values["slope_times_max"]) < int(
+                    values["slope_times_min"]):
                 sg.popup("Error with slope times")
 
             elif "" in values:
                 sg.popup("There can be no empty values")
 
-            elif int(values["x_stride_min"]) > int(values["x_stride_max"]) or int(values["x_stride_max"]) < int(values["x_stride_min"]):
+            elif int(values["x_stride_min"]) > int(values["x_stride_max"]) or int(values["x_stride_max"]) < int(
+                    values["x_stride_min"]):
                 sg.popup("Error with X stride values")
 
-            elif int(values["y_stride_min"]) > int(values["y_stride_max"]) or int(values["y_stride_max"]) < int(values["y_stride_min"]):
+            elif int(values["y_stride_min"]) > int(values["y_stride_max"]) or int(values["y_stride_max"]) < int(
+                    values["y_stride_min"]):
                 sg.popup("Error with Y stride values")
 
             else:
                 window.close()
-                return int(values["slope_times_min"]), int(values["slope_times_max"]),int(values["x_stride_min"]),int(values["x_stride_max"]),int(values["y_stride_min"]),int(values["y_stride_max"])
+                return int(values["slope_times_min"]), int(values["slope_times_max"]), int(values["x_stride_min"]), int(
+                    values["x_stride_max"]), int(values["y_stride_min"]), int(values["y_stride_max"])

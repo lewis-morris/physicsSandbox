@@ -11,10 +11,11 @@ import shapely
 from Box2D import b2CircleShape, b2PolygonShape, b2FixtureDef
 from sect.triangulation import constrained_delaunay_triangles, delaunay_triangles
 
-from shapely.geometry import Point
+from shapely.geometry import Point, LineString
 from shapely.geometry.polygon import Polygon
 from shapely import affinity
 from configobj import ConfigObj
+from shapely.ops import unary_union
 
 
 def rotate_around_point_highperf(xy, radians, origin=(0, 0)):
@@ -75,7 +76,7 @@ def fragment_poly(conts):
         final_contours.append(cn)
     return final_contours
 
-def create_floor_poly(max_width, max_height,slope_times_min,slope_times_max,x_stride_min,x_stride_max,y_stride_min,y_stride_max):
+def create_floor_poly(max_width, max_height,slope_times_min,slope_times_max,x_stride_min,x_stride_max,y_stride_min,y_stride_max,full_poly=True):
 
     coords = [[0, 0], [400, 0]]
     slope_times = 0
@@ -123,10 +124,13 @@ def create_floor_poly(max_width, max_height,slope_times_min,slope_times_max,x_st
 
     min_y = max([co[1] for co in coords]) + 50
 
-    coords.append([coords[-1][0], min_y])
-    coords.append([0, min_y])
+    if full_poly:
+        coords.append([coords[-1][0], min_y])
+        coords.append([0, min_y])
+        return Polygon(coords)
 
-    return Polygon(coords)
+    else:
+        return LineString(coords)
 
 def check_contains_all(block_list, shape, board):
     """ used to search a rectangular shape for blocks"""
@@ -140,7 +144,7 @@ def check_contains_all(block_list, shape, board):
     blocks = block_list
 
     for bl in blocks:
-        poly = get_poly_from_ob(bl, board)
+        poly = bl.get_poly(board)
         if square.covers(poly) is True:
             contained_list.append(bl)
 
@@ -277,7 +281,7 @@ def get_all_in_poly(phys,coords):
     poly = Polygon(coords)
     for bl in phys.block_list:
 
-        inner = get_poly_from_ob(bl,6)
+        inner = bl.get_poly(6)
         if poly.contains(inner):
             blocks.append(bl)
     if len(blocks) == 0:
@@ -285,7 +289,7 @@ def get_all_in_poly(phys,coords):
     else:
         return blocks
 
-def get_clicked(bodies, x, y, board, shrink_cir=16):
+def get_clicked(bodies, x, y, shrink_cir=16):
     block = None
     coords = None
 
@@ -302,7 +306,7 @@ def get_clicked(bodies, x, y, board, shrink_cir=16):
     for i in np.arange(len(floor+sensor_blocks+player+blocks) - 1, -1, -1):
         if bodies != []:
             bl = bodies[i]
-            is_clicked, shape = check_contains(bl, (x, y), board, shrink_cir)
+            is_clicked, shape = check_contains(bl, (x, y), shrink_cir)
             if is_clicked is True:
                 block = bl
                 coords = shape
@@ -315,24 +319,11 @@ def calculateDistance(x1, y1, x2, y2):
     return dist
 
 
-def get_poly_from_ob(v1, board, shrink_cir=16):
-    # if not calculated then calc the position
-    if v1.current_position == []:
-        v1.get_current_pos(board)
-
-    if hasattr(v1, "shape"):
-        # create polygon
-        polygon = Polygon(v1.current_position)
-    else:
-        # if circle get poly
-        polygon = Point(v1.center[0], v1.center[1])
-        polygon = polygon.buffer(v1.radius, shrink_cir)
-    return polygon
 
 def get_poly_from_verts(v1):
     return Polygon(v1)
 
-def check_contains(v1, p1, board, shrink_cir=16):
+def check_contains(v1, p1, shrink_cir=16):
     """
 
     :param v1:
@@ -341,7 +332,7 @@ def check_contains(v1, p1, board, shrink_cir=16):
     :param shrink_cir: Used to lower the amount of lines to create the shape - helps with fragmenting
     :return:
     """
-    polygon = get_poly_from_ob(v1, board, shrink_cir)
+    polygon = v1.get_poly()
     point = Point(p1[0], p1[1])
 
     return polygon.contains(point), list(polygon.exterior.coords)

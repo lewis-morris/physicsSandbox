@@ -2,7 +2,7 @@
 # coding: utf-8
 from configobj import ConfigObj
 
-from gui import update_block, get_fixtures, get_toolbar, deal_with_toolbar_event
+from gui import update_block, get_fixtures, get_toolbar, deal_with_toolbar_event, get_clicked_keys_gui
 from keyboardmouse import *
 from objects import load
 
@@ -64,6 +64,10 @@ def add(event, x, y, flags, param):
         elif cur_key[1:] == SelectType.d_straight_join.value:
             if msg.message == "Pulley":
                 draw, phys = pulley(draw, phys, event, x_new, y_new, cur_key)
+
+        elif cur_key[1:] == SelectType.player_select.value:
+            if msg.message == "Merge Blocks":
+                draw, phys = merge_blocks(draw, phys, event, x_new, y_new, cur_key)
 
         elif cur_key[1:] == SelectType.rotation_select.value:
             if msg.message == "Rotation Joint":
@@ -169,11 +173,12 @@ def add(event, x, y, flags, param):
         if cur_key[1:] == SelectType.select.value and msg.message == "Mouse Move":
             draw, phys = mouse_joint_move(draw, phys, x_new, y_new, event, cur_key)
 
+
         else:
             if msg.message == "Clone Move":
-                draw, phys = move_clone(draw, phys, x_new, y_new, event, True)
+                draw, phys = move_clone(draw, phys, x_new, y_new, event, True,board=True)
             else:
-                draw, phys = move_clone(draw, phys, x_new, y_new, event, False)
+                draw, phys = move_clone(draw, phys, x_new, y_new, event, False, board=True)
 
     elif cur_key[0] == "x" and cur_key_type == 0:
 
@@ -225,6 +230,17 @@ def add(event, x, y, flags, param):
         Used to select objects to be a player click
         """
         draw, phys = make_player(draw, phys, event, x_new, y_new, cur_key)
+
+
+    elif cur_key[0] == "`" and cur_key_type == 1:
+        """
+        Used to select blocks and print details (for now)
+        """
+        draw, phys = select_blocks(draw, phys, event, x_new, y_new, cur_key)
+        if len(draw.player_list) >= 1:
+            bl = get_clicked_keys_gui(draw.player_list[0])
+            draw.reset()
+
 
     elif cur_key[0] == "1" and cur_key_type == 1:
         """
@@ -320,6 +336,7 @@ if __name__ == "__main__":
     conf.filename = "config.cfg"
     conf.write()
 
+    # set window name and mouse callback for mouse events
     cur_key = ""
     cur_key_type = 0
     force = False
@@ -329,7 +346,6 @@ if __name__ == "__main__":
 
     key_type = 1
 
-    # set window name and mouse callback for mouse events
     cv2.namedWindow("Board")
     cv2.setMouseCallback("Board", add)
 
@@ -359,19 +375,19 @@ if __name__ == "__main__":
         board.copy_board()
 
         # draw physics
-        board = phys.draw_blocks(board)
+        phys.draw_blocks()
 
         # draw front of board
-        board = board.draw_front(board)
+        board.draw_front()
 
         # draw joints
-        board = phys.draw_joints(board)
+        phys.draw_joints()
 
         # write lines for drawing
-        board = draw.draw_point(board)
+        draw.draw_point()
 
         # write message if needed
-        board = msg.draw_message(board, (not draw.pause is True) and (phys.pause is False))
+        msg.draw_message((not draw.pause is True) and (phys.pause is False))
 
         # show board
         cv2.imshow("Board", board.board_copy[:, :, ::-1])
@@ -390,7 +406,7 @@ if __name__ == "__main__":
                 phys.create_block()
                 loops = 0
             # check players off screen to kill (otherwise they would continue to be calculated off screen wasting CPU) or if they have reached the goal
-            goal_hits = phys.check_off(board)
+            goal_hits = phys.check_off()
             msg.goal_hits += goal_hits
 
             # step the physics engine
