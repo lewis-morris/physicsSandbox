@@ -5,18 +5,26 @@ import string
 import time
 import cv2
 import numpy as np
+
 from sect.triangulation import constrained_delaunay_triangles
+
 from scipy.ndimage import rotate
-from shapely.geometry import Polygon, LineString, Point
-from shapely.ops import unary_union
+from shapely.geometry import Polygon, LineString, Point,MultiPolygon
+from shapely.ops import unary_union,cascaded_union
+from shapely.affinity import rotate as rt
+from shapely import affinity
+
 from draw_functions import get_enlongated_line, get_poly_from_two_rectangle_points
 from functions import get_random_col, get_config, convert_to_mks, convert_from_mks, dent_contour, fragment_poly, calculateDistance, get_angle,rotate_around_point_highperf
+
 import gc
+
 from Box2D import *
+
 import pickle
+
 from configobj import ConfigObj
-from shapely.affinity import rotate as rt
-from shapely.ops import cascaded_union
+
 
 config = ConfigObj('config_default.cfg')
 
@@ -42,7 +50,7 @@ def load(height=800, width=1200, b_height = None, b_width = None):
     phys = board.load_blocks(phys=phys, block_accuracy=block_accuracy, height=height, width=width)
 
     phys.world.contactListener = Contacter()
-    msg = Messenger(get_config("screen", "fps"), board.board)
+    msg = Messenger(get_config("screen", "fps"), board)
 
     msg.board = board
 
@@ -83,7 +91,7 @@ def load(height=800, width=1200, b_height = None, b_width = None):
 
 
         for bl in phys.block_list:
-            bl.is_boundry = True
+            bl.sensor["type"] = "boundry"
             bl.colour = (255,0,0)
 
     return timer, phys, board, draw, msg
@@ -383,8 +391,8 @@ class Draw():
         self.coords = []
         self.clone_created = False
 
-        for bl in self.player_list:
-            bl.sensor = False
+        #for bl in self.player_list:
+        #    bl.sensor = False
 
         del self.player_list
         self.player_list = []
@@ -408,11 +416,12 @@ class Physics():
         self.height = None
         self.width = None
         self.block_list = []
-        self.draw_objects = {"sensor": True, "ground": True, "blocks": True, "foreground": True}
         self.pause = False
+        self.draw_objects = {"draw_all":False}
         self.options = {}
         self.change_config(config=config)
         self.move_keys_list = {}
+        self.force_draw_all = False
 
     def do_keypress(self,key):
         """
@@ -583,6 +592,13 @@ class Physics():
                             palette = val
                             board.palette.set_palllette(palette)
 
+    def set_can_fire(self,fire_bl):
+        for bl in self.block_list:
+            if bl is fire_bl:
+                bl.can_fire = True
+            else:
+                bl.can_fire = False
+
     def kill_all(self, static=True,terrain=False):
         for i in np.arange(len(self.block_list) - 1, -1, -1):
             block = self.block_list[i]
@@ -611,8 +627,6 @@ class Physics():
         #     block_dic["draw_static"] = True
         # else:
         #     block_dic["shape"] = block.shape
-
-        block_dic["draw_static"] = block.draw_static
 
         body_dic = {"inertia": block.body.inertia,
                     "linearDamping": block.body.linearDamping,
@@ -720,7 +734,7 @@ class Physics():
                                       fixtures=b2FixtureDef(
                                           shape=b2PolygonShape(vertices=shape),
                                           density=block_info["fixtures"][0]["density"])),
-                          set_sprite=False, draw_static=block_info["block"]["draw_static"])
+                          set_sprite=False)
 
                 )
 
@@ -759,14 +773,13 @@ class Physics():
             # reseize sprite
 
             if not block.sprite is None:
+                block.set_height_width()
+
                 if block_info["block"]["type"] in [-1, 1, 3]:
                     block.sprite = cv2.resize(block.sprite, dsize=(int(block.width), int(block.height)))
                     block.mask = cv2.resize(block.mask, dsize=(int(block.width), int(block.height)))
                     block.inv_mask = cv2.resize(block.inv_mask, dsize=(int(block.width), int(block.height)))
-                else:
-                    block.sprite = cv2.resize(block.sprite, (int(block.radius * 2), int(block.radius * 2)))
-                    block.mask = cv2.resize(block.mask, (int(block.radius * 2), int(block.radius * 2)))
-                    block.inv_mask = cv2.resize(block.inv_mask, (int(block.radius * 2), int(block.radius * 2)))
+
 
             # not needed any more!!
             # if block.sprite_on and not type(block.sprite) is None:
@@ -1165,7 +1178,7 @@ class Physics():
         self.block_list[-1].board = self.board
         return True
 
-    def merge_blocks(self,bl_list=None,is_terrain=False,board=None):
+    def merge_blocks(self,bl_list=None,is_terrain=False):
 
         if bl_list is None:
             bls = [bl for bl in self.block_list if bl.is_terrain]
@@ -1207,7 +1220,8 @@ class Physics():
 
         for i in range(blocks_length, -1, -1):
             bl = self.block_list[i]
-            if bl.body.userData["bullet_actions"] == "hit":
+            userData = bl.body.userData
+            if userData["bullet_actions"] == "hit":
                 if self.options["player"]["bullet_fragment"]:
                     if bl.type < 0:
                         convert = True
@@ -1217,8 +1231,99 @@ class Physics():
                 else:
                     self.delete(bl)
 
-            elif bl.body.userData["bullet_actions"] == "kill":
+            elif userData["bullet_actions"] == "kill":
                 self.delete(bl)
+
+            remove_positions = []
+            for i,act in enumerate(userData["actions"]):
+
+                #action for switching gravity
+                if act["type"] == "gravity" and act["complete"] is False:
+                    bl.body.gravityScale *= -1
+                    act["complete"] = True
+
+                #action for Water
+                if act["type"] == "water" and act["complete"] is False:
+
+                    sensor = [bl for bl in self.block_list if bl.id == act["id"]]
+                    if len(sensor)> 0:
+                        sensor = sensor[0]
+                        bl_poly = bl.get_poly(4)
+                        sensor_poly = sensor.get_poly(4)
+                        intersection = sensor_poly.intersection(bl_poly)
+                        if type(intersection) is MultiPolygon:
+                            intersection = intersection.convex_hull
+
+                        int_area = convert_to_mks(intersection.area)/42.5
+                        if int_area > 0:
+                            int_centroid = convert_to_mks(intersection.centroid.x,intersection.centroid.y)
+                            water_density = bl.body.fixtures[0].density
+                            displaced_mass = water_density * int_area
+                            buoyancy_force = displaced_mass * -np.array(self.gravity)
+
+                            bl.body.ApplyForce(buoyancy_force,int_centroid,wake=True)
+                            coords = list(intersection.exterior.coords)
+
+                            for i in range(len(coords)-1):
+                                v0 = b2Vec2(convert_to_mks(coords[i][0],coords[i][1]))
+                                v1 = b2Vec2(convert_to_mks(coords[i+1][0],coords[i+1][1]))
+                                mid = 0.5 * (v0+v1)
+                                velDir = b2Vec2(bl.body.GetLinearVelocityFromWorldPoint(mid) - sensor.body.GetLinearVelocityFromWorldPoint(mid))
+                                vel = velDir.Normalize()
+                                edge = b2Vec2(v1-v0)
+                                edgeLength = b2Vec2(edge).Normalize()
+                                normal = b2Vec2(b2Cross(-1, edge))
+                                dragDot = b2Dot(normal, velDir)
+                                if dragDot > 0:
+                                    dragMag = dragDot * edgeLength * water_density * vel * vel
+                                    dragForce = dragMag * -velDir
+                                    bl.body.ApplyForce(dragForce, mid, wake=True)
+
+                                    #lift for moving objects
+                                    liftDot = b2Dot(edge, velDir);
+                                    liftMag = (dragDot * liftDot) * edgeLength * water_density * vel * vel
+                                    liftDir = b2Vec2(b2Cross(1, velDir))
+                                    liftForce = b2Vec2(liftMag * liftDir)
+                                    bl.body.ApplyForce(liftForce, mid, wake=True);
+
+                            angularDrag = int_area * -bl.body.angularVelocity
+                            bl.body.ApplyTorque(angularDrag,wake=True)
+                    else:
+                        pass
+                #action for switching gravity to low (almost water like)
+                if act["type"] == "lowgravity" and act["complete"] == False:
+                    bl.body.gravityScale = 0.05
+                    act["complete"] = True
+
+
+                #action for switching gravity to normal
+                if act["type"] == "lowgravity" and act["complete"] == "switch":
+                    bl.body.gravityScale = 1
+                    remove_positions.append(i)
+
+                #action for switching motor
+                if act["type"] in ["enlarger","shrinker"] and act["complete"] == False:
+                    for fix in bl.body.fixtures:
+                        if type(fix.shape) is b2PolygonShape:
+                            old_vert = fix.shape.vertices
+                            new_poly = affinity.scale(Polygon(fix.shape.vertices), 1.02 if act["type"] == "enlarger" else .98, 1.02 if act["type"] == "enlarger" else .98)
+                            if new_poly.area > convert_to_mks(0.5):
+                                fix.shape.vertices = list(new_poly.exterior.coords)
+                        else:
+                            fix.shape.radius *= 1.02 if act["type"] == "enlarger" else .98
+                            if fix.shape.radius < convert_to_mks(4):
+                                fix.shape.radius = convert_to_mks(4)
+                #enlarger for switching motor
+                if act["type"] == "motorsw" and act["complete"] == False:
+                    for jn in bl.body.joints:
+                        if hasattr(jn.joint,"motorSpeed"):
+                            jn.joint.motorSpeed *= -1
+                    act["complete"] = True
+
+            #remove not needed actions
+            for i in np.arange(len(remove_positions)-1,-1,-1):
+                del userData["actions"][i]
+
     def check_board_translation(self):
         #check if the board needs translating -
         if self.board.x_trans_do == "up":
@@ -1271,63 +1376,29 @@ class Physics():
 
 
         # split sensors and blocks
-        floor = [bl for bl in self.block_list if
-                 bl.body.fixtures[0].sensor is False and bl.static is True]  # and not bl.force_draw is True)]
-        sensor_blocks = [bl for bl in self.block_list if bl.body.fixtures[0].sensor == True and bl.foreground == False]
-        player = [bl for bl in self.block_list if bl.is_player is True]
-        foreground = [bl for bl in self.block_list if bl.body.fixtures[0].sensor == True and bl.foreground == True]
+        background = [bl for bl in self.block_list if bl.background]
+        blocks = [bl for bl in self.block_list if not bl.background and not bl.foreground]
+        foreground = [bl for bl in self.block_list if bl.foreground]
 
-        # and not bl.force_draw is True)]
-        blocks = [bl for bl in self.block_list if
-                  bl not in sensor_blocks and bl not in floor and bl not in foreground and bl not in player]  # and not bl.force_draw is True)]
-
-        if self.draw_objects["ground"]:
-            for bl in floor:
+        if self.force_draw_all:
+            for bl in background:
                 bl.draw()
-        else:
-            for bl in floor:
-                if bl.force_draw:
-                    bl.draw()
-
-        if self.draw_objects["sensor"]:
-            for bl in sensor_blocks:
-                bl.draw()
-        else:
-            for bl in sensor_blocks:
-                if bl.force_draw:
-                    bl.draw()
-                # this was too slow
-                # board_overlay = board.copy()
-                # board_overlay = bl.draw(board)
-                # alpha = 0.2
-                # board = cv2.addWeighted(board_overlay, alpha, board, 1 - alpha, 0)
-
-        if self.draw_objects["blocks"]:
-            # draw blocks undernear
             for bl in blocks:
                 bl.draw()
-            for bl in player:
+            for bl in foreground:
                 bl.draw()
+            return
         else:
+            for bl in background:
+                if bl.force_draw:
+                    bl.draw()
             for bl in blocks:
                 if bl.force_draw:
                     bl.draw()
-
-            for bl in player:
-                if bl.force_draw:
-                    bl.draw()
-
-        if "foreground" not in self.draw_objects:
-            self.draw_objects["foreground"] = True
-
-        if self.draw_objects["foreground"]:
-            # draw blocks undernear
-            for bl in foreground:
-                bl.draw()
-        else:
             for bl in foreground:
                 if bl.force_draw:
                     bl.draw()
+
 
     def draw_joints(self):
         for jn in self.world.joints:
@@ -1359,7 +1430,7 @@ class Physics():
                 end = convert_from_mks(jn.anchorB.x, jn.anchorB.y)
 
                 self.board.board_copy = cv2.line(self.board.board_copy, tuple(np.array([int(x) for x in start])+self.board.translation),
-                                            tuple([int(x) for x in end]), col, 2)
+                                            tuple(np.array([int(x) for x in end])+self.board.translation), col, 2)
 
 
 
@@ -1703,34 +1774,31 @@ class _Base_Block():
 
     def __init__(self, body, static_shape=False, set_sprite=False, sprite=None, draw_static=True, poly_type=None):
         self.body = body
-        self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False,
+        self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False, "actions":[],
                               "player_allow_impulse": True, "bullet_actions": None, "bullets_destory_ground": False, "kill":False,"ground_touches":0,"sensor_touch_id":[]}
         self.type = poly_type
+
+        self.static = static_shape
+        self.board = None
+
+
+        self.center = None
+        self.poly = None
         self.pos = None
         self.current_position = []
         self.translated_position = []
-        self.static = static_shape
-        self.board = None
-        #self.shape = [convert_from_mks(x, y) for x, y in self.body.fixtures[0].shape.vertices]
-        #self.width = round(max([x[0] for x in self.shape])) + abs(round(min([x[0] for x in self.shape])))
-        #self.height = round(max([x[1] for x in self.shape])) + abs(round(min([x[1] for x in self.shape])))
-        self.center = None
 
-        self.draw_static = draw_static
-        self.draw_me = True
+        self.force_draw = True
 
-        self.times_off = 0
+        self.sensor = {"type":None}
 
-        self.sensor = False
-        self.booster = None
-        self.splitter = None
-        self.forcer = None
-        self.goal = False
-        self.force_draw = False
         self.foreground = False
+        self.background = False
 
         self.bullet = False
         self.bullet_creator = None
+
+        self.centroid = None
 
         self.sprite = sprite
         self.mask = None
@@ -1740,6 +1808,7 @@ class _Base_Block():
         self.center_me = False
         self.is_boundry = False
         self.is_terrain = False
+        self.can_fire = False
 
         if set_sprite:
             self.set_sprite()
@@ -1758,7 +1827,6 @@ class _Base_Block():
 
         self.old_id = None
 
-        self.poly = None
 
     def __str__(self):
         str = f"active: {self.active} col: {self.colour} id: {self.id} old_id: {self.old_id} static: {self.static} \n"
@@ -1786,8 +1854,8 @@ class _Base_Block():
     def get_poly(self,rad=5):
 
         #if static block or terrain then poly is already set as un moveable.
-        if not self.poly is None:
-            return self.poly
+        #if not self.poly is None:
+        #    return self.poly
 
         if self.current_position == []:
             self.get_current_pos()
@@ -1796,11 +1864,14 @@ class _Base_Block():
         for fix, pos in zip(self.body.fixtures, self.current_position):
             if type(fix.shape) == b2PolygonShape:
                 polys.append(Polygon(pos))
-            else:
+            elif type(fix.shape) == b2CircleShape:
                 # if circle get poly
                 pos = pos.squeeze()
                 polygon = Point(pos[0], pos[1])
+                rad = 5
                 polys.append(polygon.buffer(convert_from_mks(fix.shape.radius), rad))
+            else:
+                pass
 
         poly = unary_union(polys)
         if not type(poly) == Polygon:
@@ -1809,9 +1880,11 @@ class _Base_Block():
         return poly
 
     def set_as_bullet(self, vector, id, destroy_ground):
-        self.bullet_creator = id
+        self.sensor["type"] = "bullet"
+        self.sensor["data"] = id
+
         # set the block as a bullet for colision detection
-        self.bullet = True
+
         self.colour = (255, 17, 0)
         # set as a sensor
         self.body.fixtures[0].sensor = True
@@ -1847,22 +1920,35 @@ class _Base_Block():
                 shapes = [(convert_from_mks(val[0], val[1])) for val in shapes]
                 self.translated_position.append(np.array(shapes) + self.board.translation)
                 self.current_position.append(np.array(shapes))
+                self.poly = Polygon(self.translated_position[0])
+                self.centroid = (self.poly.centroid.x,self.poly.centroid.y)
             else:
                 # for circles add center
                 shape = self.body.transform * fix.shape.pos
                 shape = [convert_from_mks(shape[0], shape[1])]
                 self.translated_position.append(np.array(shape) + self.board.translation)
                 self.current_position.append(np.array(shape))
+                self.poly = Polygon(np.array(self.get_poly(3).exterior.coords)+self.board.translation)
+                self.centroid = self.translated_position[0].squeeze()
 
         self.center = convert_from_mks((self.body.transform * self.body.localCenter).x,
                                        (self.body.transform * self.body.localCenter).y)
 
+        #on screen?
         if max([max([y[0] for y in x]) if len(x) != 2 else x[0] for x in self.translated_position]) < 0 or min([min([y[0] for y in x]) if len(x) != 2 else x[0] for x in self.translated_position]) > self.board.board.shape[1]:
             return False
         elif max([max([y[1] for y in x]) if len(x) != 2 else x[0] for x in self.translated_position])  < 0 or min([min([y[1] for y in x]) if len(x) != 2 else x[0] for x in self.translated_position]) > self.board.board.shape[0]:
             return False
         else:
             return True
+    def set_height_width(self):
+        coords = list(self.get_poly(4).exterior.coords)
+        widthMax = max([x[0] for x in coords])
+        widthMin = min([x[0] for x in coords])
+        heightMax = max([x[1] for x in coords])
+        heightMin = min([x[1] for x in coords])
+        self.height = heightMax - heightMin
+        self.width = widthMax - widthMin
 
     def set_sprite(self, force=False):
         if not self.sprite is None:
@@ -1872,6 +1958,14 @@ class _Base_Block():
                     img = img[:, ::-1]
 
                 if not force:
+                    coords = list(self.get_poly(4).exterior.coords)
+                    widthMax = max([x[0] for x in coords])
+                    widthMin = min([x[0] for x in coords])
+                    heightMax = max([x[1] for x in coords])
+                    heightMin = min([x[1] for x in coords])
+                    self.height = heightMax - heightMin
+                    self.width = widthMax - widthMin
+
                     self.sprite = cv2.resize(img, (int(self.width), int(self.height)))
 
                 if self.sprite.shape[2] == 4:
@@ -1888,15 +1982,12 @@ class _Base_Block():
 
     def draw(self, force_draw=True):
 
-        if self.draw_me is False:
-            return self.board
-        elif (self.draw_static is True and self.static) or self.static is False:
 
             on_screen = self.get_current_pos()
             if on_screen:
                 if self.sprite_on and type(self.sprite) != None:
 
-                    center = self.center
+                    center = self.centroid
 
                     degrees = np.rad2deg(self.body.angle * -1)
 
@@ -1918,7 +2009,7 @@ class _Base_Block():
                     y_end = int(y_start + (height))
 
                     # if out of bounds return not drawn
-                    if y_start > board.board_copy.shape[0] or x_start > board.board_copy.shape[1] or x_end < 0 or y_end < 0:
+                    if y_start > self.board.board_copy.shape[0] or x_start > self.board.board_copy.shape[1] or x_end < 0 or y_end < 0:
                         return board
 
                     if y_start < 0:
@@ -1933,17 +2024,17 @@ class _Base_Block():
                         mask = mask[:, val:]
                         x_start = 0
 
-                    if y_end > board.board_copy.shape[0]:
-                        val = abs(y_end - board.board_copy.shape[0])
+                    if y_end > self.board.board_copy.shape[0]:
+                        val = abs(y_end - self.board.board_copy.shape[0])
                         sprite = sprite[:sprite.shape[0] - val, :]
                         mask = mask[:sprite.shape[0], :]
-                        y_end = board.board_copy.shape[0]
+                        y_end = self.board.board_copy.shape[0]
 
-                    if x_end > board.board_copy.shape[1]:
-                        val = abs(x_end - board.board_copy.shape[1])
+                    if x_end > self.board.board_copy.shape[1]:
+                        val = abs(x_end - self.board.board_copy.shape[1])
                         sprite = sprite[:, :sprite.shape[1] - val]
                         mask = mask[:, :sprite.shape[1]]
-                        x_end = board.board_copy.shape[1]
+                        x_end = self.board.board_copy.shape[1]
 
                     self.board.board_copy[y_start:y_end, x_start:x_end, :] = (self.board.board_copy[y_start:y_end, x_start:x_end,
                                                                          :] * (1 - mask)) + sprite
@@ -1962,215 +2053,10 @@ class _Base_Block():
                                                           colour,
                                                           thickness=-1)
 
-                return self.board
-            else:
-                return self.board
-        else:
+
             return self.board
 
 
-class Ball():
-
-    def __init__(self, body, set_sprite=False, sprite=None, draw=True, poly_type=None, static_shape=False):
-        self.body = body
-
-        self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False,
-                              "player_allow_impulse": True, "bullet_actions": None, "bullets_destory_ground": False, "kill":False,"ground_touches":0}
-
-        self.type = poly_type
-        self.pos = None
-        self.current_position = []
-        self.translated_position = []
-        if static_shape:
-            self.colour = 10
-        else:
-            self.colour = random.choice([0, 1, 2, 4, 5, 14])
-
-        self.active = True
-        self.center = None
-        self.radius = int(convert_from_mks(self.body.fixtures[0].shape.radius))
-        self.static = False
-        self.times_off = 0
-        self.old_id = None
-        self.force_draw = draw
-
-        self.sensor = False
-        self.foreground = False
-        self.booster = None
-        self.goal = False
-        self.splitter = False
-        self.forcer = None
-        self.is_boundry = False
-        self.is_terrain = False
-
-        self.center_me = False
-
-        self.bullet = False
-        self.bullet_creator = None
-
-        self.id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))
-        self.sprite = sprite
-        self.mask = None
-        self.inv_mask = None
-        self.sprite_on = False
-
-        self.keys = {}
-
-        if set_sprite is True:
-            self.set_sprite()
-
-        self.is_player = False
-
-    def __str__(self):
-
-        str = f"active: {self.active} col: {self.colour} id: {self.id} old_id: {self.old_id} static: {self.static} \n"
-        for x in self.body.joints:
-            str += f"Joint: {type(x.joint)} bodyA id {x.joint.bodyA.userData['ob'].id} oldId {x.joint.bodyA.userData['ob'].old_id} bodyB id {x.joint.bodyB.userData['ob'].id} oldId {x.joint.bodyB.userData['ob'].old_id}\n"
-
-        return str
-
-    def add_move(self, key, type, extra):
-        """
-        Used to add keys and actions to be fired on keypress
-
-        :param key:
-        :param id:
-        :param type:
-        :param extra:
-        :return:
-        """
-
-        if key in self.keys:
-            self.keys[key].append([type, extra, 1, extra])
-        else:
-            self.keys[key] = [[type, extra, 1, extra]]
-
-    def get_poly(self):
-        return get_poly_from_ob(self, 3)
-
-    def get_current_pos(self):
-        self.center = np.array(convert_from_mks((self.body.transform * self.body.localCenter).x,
-                                       (self.body.transform * self.body.localCenter).y))
-        self.current_position = [self.center]
-        self.translated_position = [self.center+self.board.translation]
-
-        if self.translated_position[0][0] < 0 or self.translated_position[0][0] > self.board.board.shape[1]:
-            return False
-        elif self.translated_position[0][1] < 0 or self.translated_position[0][1] > self.board.board.shape[0]:
-            return False
-        else:
-            return True
-
-    def set_sprite(self, force=False):
-        if not self.sprite is None:
-            try:
-
-                if not force:
-                    img = cv2.imread(self.sprite, -1)
-                    self.sprite = cv2.resize(img, (int(self.radius * 2), int(self.radius * 2)))
-
-                mask = self.sprite[:, :, 3] / 255
-
-                self.mask = np.stack([mask, mask, mask]).transpose([1, 2, 0])
-                inv_mask = 1 - mask.copy()
-                self.inv_mask = np.stack([inv_mask, inv_mask, inv_mask]).transpose([1, 2, 0])
-
-                self.sprite = self.sprite[:, :, :3] * self.mask
-                self.sprite = self.sprite[:, :, ::-1]
-                self.sprite_on = True
-            except:
-                self.sprite = None
-                print("Error reading sprite image file")
-
-    def boost_block(self):
-
-        for impul in self.body.userData["impulses"]:
-            self.body.ApplyLinearImpulse((np.array(impul) * self.body.mass) * 2, self.body.worldCenter, wake=True)
-
-        for force in self.body.userData["forces"]:
-            self.body.ApplyForce((np.array(force) * self.body.mass) * 2, self.body.worldCenter, wake=True)
-
-        self.body.userData["impulses"] = []
-        self.body.userData["forces"] = []
-
-    def draw(self, board, force_draw=False):
-
-        ok_to_draw = self.get_current_pos()
-        if ok_to_draw:
-            if self.sprite_on and type(self.sprite) != None:
-
-                degrees = np.rad2deg(self.body.angle)
-                if degrees != 0:
-                    sprite = rotate(self.sprite.copy().astype(np.uint8), int(degrees * -1), reshape=False)
-                else:
-                    sprite = self.sprite.copy()
-
-                mask = self.inv_mask.copy()
-
-                # x_start = int(self.center[0]) - self.radius
-                # y_start = int(self.center[1]) - self.radius
-                # x_end = x_start + (self.radius*2)
-                # y_end = y_start + (self.radius*2)
-
-                # get shape
-                height, width, _ = sprite.shape
-                x_start = int(self.center[0] - int(width / 2))
-                y_start = int(self.center[1] - int(height / 2))
-                x_end = int(x_start + (width))
-                y_end = int(y_start + (height))
-
-                # if out of bounds return not drawn
-                if y_start > board.board_copy.shape[0] or x_start > board.board_copy.shape[1] or x_end < 0 or y_end < 0:
-                    return board.board_copy
-
-                if y_start < 0:
-                    val = abs(y_start)
-                    sprite = sprite[val:, :]
-                    mask = mask[val:, :]
-                    y_start = 0
-
-                if x_start < 0:
-                    val = abs(x_start)
-                    sprite = sprite[:, val:]
-                    mask = mask[:, val:]
-                    x_start = 0
-
-                if y_end > board.board_copy.shape[0]:
-                    val = abs(y_end - board.board_copy.shape[0])
-                    sprite = sprite[:sprite.shape[0] - val, :]
-                    mask = mask[:sprite.shape[0], :]
-                    y_end = board.board_copy.shape[0]
-
-                if x_end > board.board_copy.shape[1]:
-                    val = abs(x_end - board.shape[1])
-                    sprite = sprite[:, :sprite.shape[1] - val]
-                    mask = mask[:, :sprite.shape[1]]
-                    x_end = board.board_copy.shape[1]
-
-                self.board.board_copy[y_start:y_end, x_start:x_end, :] = (self.board.board_copy[y_start:y_end, x_start:x_end,
-                                                                     :] * mask) + sprite
-                # board[y_start:y_end, x_start:x_end] = board[y_start:y_end, x_start:x_end] * (1 - mask) + (img * mask)
-            else:
-                try:
-                    if type(self.colour) is tuple:
-                        colour = self.colour
-                    else:
-                        colour = self.board.palette.current_palette[self.colour]
-
-                    self.board.board_copy = cv2.circle(self.board.board_copy, tuple(np.array([int(x) for x in self.translated_position[0]])), int(self.radius),
-                                                  colour,
-                                                  thickness=-1)  # .astype(np.uint8)
-                except cv2.error:
-                    # error in drawing circle size
-                    print("Circle draw error")
-                    pass
-            if self.is_player:
-                self.board.board_copy = cv2.circle(self.board.board_copy, tuple(np.array([int(x) for x in  self.translated_position[0]])), int(self.radius),
-                                              self.board.palette.current_palette[self.board.palette.player],
-                                              thickness=2)
-            return board
-        else:
-            return board
 
 class Block(_Base_Block):
 
@@ -2311,7 +2197,7 @@ class Messenger:
         self.goal_hits = 0
 
     def load_pannel(self):
-        self.pannel = np.zeros((30, self.board.shape[1], 3), dtype=np.uint8)
+        self.pannel = np.zeros((30, self.board.board.shape[1], 3), dtype=np.uint8)
         self.pannel[:, :] = (123, 123, 123)
         self.pannel[2:-2, 2:-2] = (170, 170, 170)
         self.pannel[2:-2, -105:-4] = (210, 210, 210)
@@ -2376,99 +2262,140 @@ class Contacter(b2ContactListener):
     def __init__(self):
         b2ContactListener.__init__(self)
 
+    def get_sensor_block(self,contact):
+
+        #check if objects have the correct user data
+        if "ob" in contact.fixtureA.body.userData.keys():
+            blockA = contact.fixtureA.body.userData["ob"]
+        else:
+            return None,None
+
+        if "ob" in contact.fixtureB.body.userData.keys():
+            blockB = contact.fixtureB.body.userData["ob"]
+        else:
+            return None,None
+
+        sensor = None
+        block = None
+
+
+        if not blockA.sensor["type"] is None and blockB.sensor["type"] is None:
+            sensor = blockA
+            block = blockB
+        elif not blockB.sensor["type"] is None and blockA.sensor["type"] is None:
+            sensor = blockB
+            block = blockA
+        elif blockB.static is True and blockA.sensor["type"] is None:
+            sensor = blockB
+            block = blockA
+        elif blockA.static is True and blockB.sensor["type"] is None:
+            sensor = blockB
+            block = blockA
+        elif blockB.is_boundry is True and blockA.sensor["type"] is None:
+            sensor = blockB
+            block = blockA
+        elif blockA.is_boundry is True and blockB.sensor["type"] is None:
+            sensor = blockB
+            block = blockA
+
+        elif blockB.sensor["type"] == "bullet" and blockA.sensor["type"] is None:
+            sensor = blockB
+            block = blockA
+        elif blockA.sensor["type"] == "bullet" and blockB.sensor["type"] is None:
+            sensor = blockB
+            block = blockA
+
+        if sensor is None or block is None:
+            return None, None
+        else:
+            return sensor, block
+
     def BeginContact(self, contact):
 
+        ## log sensor and block
+        ## log sensor and block
+
+        sensor, block = self.get_sensor_block(contact)
+
+        if sensor is None or block is None:
+            return
+
+        block.body.userData["sensor_touch_id"].append(sensor.id)
+
+
         ## log sensor touches
         ## log sensor touches
 
-        if contact.fixtureA.sensor == True and "ob" in contact.fixtureB.body.userData.keys() :
-            contact.fixtureB.body.userData["sensor_touch_id"].append(contact.fixtureA.body.userData["ob"].id)
-        if contact.fixtureB.sensor == True in contact.fixtureA.body.userData.keys():
-            contact.fixtureA.body.userData["sensor_touch_id"].append(contact.fixtureB.body.userData["ob"].id)
-        ## log sensor touches
-        ## log sensor touches
 
+        # impulse
+        if sensor.sensor["type"] == "impulse":
+            block.body.userData["impulses"].append(sensor.sensor["data"])
 
-        # booster
-        if contact.fixtureA.sensor == True and contact.fixtureA.body.userData["ob"].booster != None:
-            contact.fixtureB.body.userData["impulses"].append(contact.fixtureA.body.userData["ob"].booster)
-            return
-        if contact.fixtureB.sensor == True and contact.fixtureB.body.userData["ob"].booster != None:
-            contact.fixtureA.body.userData["impulses"].append(contact.fixtureB.body.userData["ob"].booster)
-            return
-
-        # booster
-        if contact.fixtureA.sensor == True and contact.fixtureA.body.userData["ob"].forcer != None:
-            contact.fixtureB.body.userData["forces"].append(contact.fixtureA.body.userData["ob"].forcer)
-            return
-        if contact.fixtureB.sensor == True and contact.fixtureB.body.userData["ob"].forcer != None:
-            contact.fixtureA.body.userData["forces"].append(contact.fixtureB.body.userData["ob"].forcer)
-            return
+        # force
+        if sensor.sensor["type"] == "force":
+            block.body.userData["forces"].append(sensor.sensor["data"])
 
         # goal
-        if contact.fixtureA.sensor == True and contact.fixtureA.body.userData["ob"].goal == True:
-            contact.fixtureB.body.userData["goal"] = True
-            return
-        if contact.fixtureB.sensor == True and contact.fixtureB.body.userData["ob"].goal == True:
-            contact.fixtureA.body.userData["goal"] = True
-            return
+        if sensor.sensor["type"] == "goal":
+            block.body.userData["goal"] = True
 
-        # goal
-        # if contact.fixtureA.sensor == True and contact.fixtureA.body.userData["ob"].splitter == True:
-        #     contact.fixtureB.body.userData["split_me"]["do"] = True
-        #     return
-        # if contact.fixtureB.sensor == True and contact.fixtureB.body.userData["ob"].splitter == True:
-        #     contact.fixtureA.body.userData["split_me"]["do"] = True
-        #     return
+        #if floor touches
+        if sensor.static:
+            block.body.userData["ground_touches"] += 1
 
-        if "ob" in contact.fixtureA.body.userData and "ob" in contact.fixtureB.body.userData:
-            # check for if off ground and allowed another jump
-            if contact.fixtureB.body.userData["ob"].static and not contact.fixtureB.body.userData["ob"].sensor is True:
-                contact.fixtureB.body.userData["ground_touches"] +=1
+        #is boundry
+        if sensor.sensor["type"] == "boundry":
+            block.body.userData["kill"] = True
 
-            # is bullet and has hit dynamic block?
-            is_bullet = contact.fixtureA.body.userData["ob"].bullet
-            ignore_id = contact.fixtureA.body.userData["ob"].bullet_creator
-            contact_id = contact.fixtureB.body.userData["ob"].id
+        #check if gravity
+        if sensor.sensor["type"] == "gravity":
+            done = sum([1 for act in block.body.userData["actions"] if act["id"] == sensor.id ])
+            if done == 0:
+                block.body.userData["actions"].append({"type":sensor.sensor["type"],"id":sensor.id, "complete":False})
 
-            if is_bullet and ignore_id != contact_id:
-                # check if small then dont destroy the bullet
-                if contact.fixtureB.body.userData["ob"].get_poly().area > 200:
-                    contact.fixtureA.body.userData["bullet_actions"] = "kill"
-
-                if not contact.fixtureB.body.userData["ob"].static or contact.fixtureA.body.userData[
-                    "bullets_destory_ground"]:
-                    contact.fixtureB.body.userData["bullet_actions"] = "hit"
-
-        if "ob" in contact.fixtureB.body.userData and "ob" in contact.fixtureA.body.userData:
-            # check for if off ground and allowed another jump
-            if contact.fixtureA.body.userData["ob"].static and not contact.fixtureA.body.userData["ob"].sensor is True:
-                contact.fixtureB.body.userData["ground_touches"] += 1
-
-            # is bullet and has hit dynamic block?
-            is_bullet = contact.fixtureB.body.userData["ob"].bullet
-            ignore_id = contact.fixtureB.body.userData["ob"].bullet_creator
-            contact_id = contact.fixtureA.body.userData["ob"].id
-
-            if is_bullet and ignore_id != contact_id:
-                # check if small then dont destroy the bullet
-                if contact.fixtureA.body.userData["ob"].get_poly().area > 200:
-                    contact.fixtureB.body.userData["bullet_actions"] = "kill"
-
-                if not contact.fixtureA.body.userData["ob"].static or contact.fixtureB.body.userData[
-                    "bullets_destory_ground"]:
-                    contact.fixtureA.body.userData["bullet_actions"] = "hit"
+        #check if low gravity
+        if sensor.sensor["type"] == "lowgravity":
+            done = sum([1 for act in block.body.userData["actions"] if act["id"] == sensor.id ])
+            if done == 0:
+                block.body.userData["actions"].append({"type":sensor.sensor["type"],"id":sensor.id, "complete":False})
 
 
-        #check if the player has hit the boundry of the map
-        if "ob" in contact.fixtureB.body.userData and "ob" in contact.fixtureA.body.userData:
-            if contact.fixtureA.body.userData["ob"].is_boundry:
-                contact.fixtureB.body.userData["kill"] = True
+        #check if motorSw
+        if sensor.sensor["type"] == "motorsw":
+            done = sum([1 for act in block.body.userData["actions"] if act["id"] == sensor.id ])
+            if done == 0:
+                block.body.userData["actions"].append({"type":sensor.sensor["type"],"id":sensor.id, "complete":False})
 
-        if "ob" in contact.fixtureA.body.userData and "ob" in contact.fixtureB.body.userData:
-            if contact.fixtureB.body.userData["ob"].is_boundry:
-                contact.fixtureA.body.userData["kill"] = True
+        #check if motorSw
+        if sensor.sensor["type"] in ["enlarger","shrinker"]:
+            done = sum([1 for act in block.body.userData["actions"] if act["id"] == sensor.id ])
+            if done == 0:
+                block.body.userData["actions"].append({"type":sensor.sensor["type"],"id":sensor.id, "complete":False})
 
+
+        #check if motorSw
+        if sensor.sensor["type"] in ["sticky"]:
+            done = sum([1 for act in block.body.userData["actions"] if act["id"] == sensor.id ])
+            block.body.awake=False
+
+        #check if water
+        if sensor.sensor["type"] in ["water"]:
+            done = sum([1 for act in block.body.userData["actions"] if act["id"] == sensor.id ])
+            if done == 0:
+                block.body.userData["actions"].append({"type":sensor.sensor["type"],"id":sensor.id, "complete":False})
+
+
+
+        #check if bullet
+        if sensor.sensor["type"] == "bullet" and sensor.sensor["data"] != block.id:
+            #destroy bullets on hitting object with a mass > 200 else let it keep moving
+            if block.get_poly().area > 200:
+                sensor.body.userData["bullet_actions"] = "kill"
+
+            #kill blocks if hit by bullet and not static unless the options allow it
+            if not block.static or sensor.body.userData["bullets_destory_ground"]:
+                #print("")
+                block.body.userData["bullet_actions"] = "hit"
 
     def PreSolve(self, contact, impulse):
         pass
@@ -2478,27 +2405,56 @@ class Contacter(b2ContactListener):
 
     def EndContact(self, contact):
 
-        ## log sensor touches
-        ## log sensor touches
-        if contact.fixtureA.sensor == True and "ob" in contact.fixtureB.body.userData.keys() :
-            contact.fixtureB.body.userData["sensor_touch_id"].remove(contact.fixtureA.body.userData["ob"].id)
-        if contact.fixtureB.sensor == True in contact.fixtureA.body.userData.keys():
-            contact.fixtureA.body.userData["sensor_touch_id"].remove(contact.fixtureB.body.userData["ob"].id)
+        sensor, block = self.get_sensor_block(contact)
+        if sensor is None or block is None:
+            return
+
         ## log sensor touches
         ## log sensor touches
 
-        #check ground touches
-        if "ob" in contact.fixtureA.body.userData and "ob" in contact.fixtureB.body.userData:
-            if contact.fixtureB.body.userData["ob"].static and not contact.fixtureB.body.userData["ob"].sensor is True:
-                contact.fixtureA.body.userData["ground_touches"] -= 1
-        if "ob" in contact.fixtureB.body.userData and "ob" in contact.fixtureA.body.userData:
-            if contact.fixtureA.body.userData["ob"].static and not contact.fixtureA.body.userData["ob"].sensor is True:
-                contact.fixtureB.body.userData["ground_touches"] -= 1
+        block.body.userData["sensor_touch_id"].remove(sensor.id)
 
-        # booster
-        if contact.fixtureA.sensor == True and contact.fixtureA.body.userData["ob"].forcer != None:
-            contact.fixtureB.body.userData["forces"] = []
+        #if floor touches
+        if sensor.static:
+            block.body.userData["ground_touches"] -= 1
 
-        if contact.fixtureB.sensor == True and contact.fixtureB.body.userData["ob"].forcer != None:
-            contact.fixtureA.body.userData["forces"] = []
+       # force
+        if sensor.sensor["type"] == "force":
+            block.body.userData["forces"] = []
 
+        try:
+            #check if gravity
+            if sensor.sensor["type"] == "gravity":
+                block.body.userData["actions"].remove({"type":"gravity","id":sensor.id, "complete":True})
+
+            #check if water leave
+            # if sensor.sensor["type"] == "water":
+            #
+            #     ind = block.body.userData["actions"].index({"type":"water","id":sensor.id, "complete":True})
+            #     block.body.userData["actions"][ind]["complete"] = "reverse"
+
+            #check if lowgravity
+            if sensor.sensor["type"] == "lowgravity":
+
+                ind = block.body.userData["actions"].index({"type":"lowgravity","id":sensor.id, "complete":True})
+                block.body.userData["actions"][ind]["complete"] = "switch"
+
+
+            # check if motor switch
+            if sensor.sensor["type"] == "motorsw":
+                    block.body.userData["actions"].remove({"type": "motorsw", "id": sensor.id, "complete": True})
+
+           # check if motor switch
+            if sensor.sensor["type"] in ["enlarger","shrinker"]:
+                    block.body.userData["actions"].remove({"type": sensor.sensor["type"], "id": sensor.id, "complete": False})
+
+            #check if water
+            if sensor.sensor["type"] in ["sticky"]:
+                block.body.userData["actions"].remove({"type": sensor.sensor["type"], "id": sensor.id, "complete": False})
+
+            #check if water
+            if sensor.sensor["type"] in ["water"]:
+                block.body.userData["actions"].remove({"type":sensor.sensor["type"],"id":sensor.id, "complete":False})
+        except ValueError:
+            #this is for when a fixeutre is added to a block
+            pass

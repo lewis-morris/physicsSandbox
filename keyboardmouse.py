@@ -34,10 +34,11 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
 
     elif key == ord("r") and cur_key_type == 0:
         # RESET SCREEN
-        draw.reset()
-        msg = Messenger(phys.options["screen"]["fps"], board.board)
-        msg.set_message("Reset")
-        board.reset = True
+        if sg.popup_yes_no("Are you sure you want to reset?") == "Yes":
+            draw.reset()
+            msg = Messenger(phys.options["screen"]["fps"], board)
+            msg.set_message("Reset")
+            board.reset = True
 
     elif key == ord("q") and cur_key_type == 0:
         # QUIT
@@ -185,29 +186,57 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
         options = {"Goal Poly": SelectType.draw, "Goal Rectangle": SelectType.rectangle}
         cur_key = msg.auto_set(options, key, force)
 
+    elif key == ord("~") and cur_key_type == 0:
+        # draw booster sensor
+        draw.reset()
+        options = {"Motor Sw Poly": SelectType.draw, "Motor Sw Rectangle": SelectType.rectangle}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("&") and cur_key_type == 0:
+        # draw booster sensor
+        draw.reset()
+        options = {"Water Poly": SelectType.draw, "Water Rectangle": SelectType.rectangle}
+        cur_key = msg.auto_set(options, key, force)
+
+
+    elif key == ord("^") and cur_key_type == 0:
+        # draw booster sensor
+        draw.reset()
+        options = {"Low Gravity Poly": SelectType.draw, "Low Gravity Rectangle": SelectType.rectangle}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("#") and cur_key_type == 0:
+        # draw booster sensor
+        draw.reset()
+        options = {"Gravity Poly": SelectType.draw, "Gravity Rectangle": SelectType.rectangle}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("%") and cur_key_type == 0:
+        # draw booster sensor
+        draw.reset()
+        options = {"Sticky Poly": SelectType.draw, "Sticky Rectangle": SelectType.rectangle}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("£") and cur_key_type == 0:
+        # draw booster sensor
+        draw.reset()
+        options = {"Enlarger Poly": SelectType.draw, "Enlarger Rectangle": SelectType.rectangle}
+        cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("$") and cur_key_type == 0:
+        # draw booster sensor
+        draw.reset()
+        options = {"Shrinker Poly": SelectType.draw, "Shrinker Rectangle": SelectType.rectangle}
+        cur_key = msg.auto_set(options, key, force)
+
     elif key == ord("0") and cur_key_type == 0:
         # pause physics
-        phys.draw_objects["ground"] = not phys.draw_objects["ground"]
-        msg.set_message("Draw Ground" + (" On" if phys.draw_objects["ground"] is True else " Off"))
-        cur_key = "0"
+        phys.force_draw_all = not phys.force_draw_all
+        options = {"Draw All": SelectType.null, "Draw Set": SelectType.null}
+        cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("9") and cur_key_type == 0:
-        # pause physics
-        phys.draw_objects["blocks"] = not phys.draw_objects["blocks"]
-        msg.set_message("Draw Blocks" + (" On" if phys.draw_objects["blocks"] is True else " Off"))
-        cur_key = "0"
 
-    elif key == ord("8") and cur_key_type == 0:
-        # pause physics
-        phys.draw_objects["sensor"] = not phys.draw_objects["sensor"]
-        msg.set_message("Draw Sensors" + (" On" if phys.draw_objects["sensor"] is True else " Off"))
-        cur_key = "0"
 
-    elif key == ord("c") and cur_key_type == 0:
-        # pause physics
-        phys.draw_objects["foreground"] = not phys.draw_objects["foreground"]
-        msg.set_message("Draw Foreground" + (" On" if phys.draw_objects["foreground"] is True else " Off"))
-        cur_key = "0"
 
     elif key == ord("o") and cur_key_type == 0:
         # pause physics
@@ -432,9 +461,9 @@ def transform_block(draw, phys, event, x, y, type, board=None):
                 if not up is None:
                     for i in np.arange(len(draw.player_list) - 1, -1, -1):
                         bl = draw.player_list[i]
-                        phys, bl_new = change_size(phys, bl, up, board)
+                        phys, bl_new = change_size(phys, bl, up)
 
-                        draw.player_list[i] = bl_new
+                        draw.player_list.append(bl_new)
                         draw.player_list[i].alive = True
                         draw.player_list[i].awake = True
                         del bl
@@ -444,7 +473,7 @@ def transform_block(draw, phys, event, x, y, type, board=None):
     return draw, phys
 
 
-def change_size(phys, block, up=True,board=None):
+def change_size(phys, block, up=True):
     block_info = phys.save_block_as_dict(block)
 
 
@@ -521,13 +550,20 @@ def draw_sensor(draw, phys, event, x, y, type, ty):
                               )
             upstage = True
 
+
     if upstage is True:
         draw.reset()
         block = phys.block_list[-1]
+
         for fix in block.body.fixtures:
             fix.sensor = True
+
+
+        block.sensor["type"] = ty
+
         block.colour = (66, 218, 245)
         block.draw_me = True
+
         draw.stage += 1
 
         draw.locations = []
@@ -535,31 +571,31 @@ def draw_sensor(draw, phys, event, x, y, type, ty):
         cenX = int(poly.centroid.x)
         cenY = int(poly.centroid.y)
         draw.log_point(cenX, cenY, "fire")
-        if ty == "goal":
-            phys.block_list[-1].goal = True
-            phys.block_list[-1].colour = (169, 252, 179)
+
+
+        if ty in ["shrinker", "enlarger","gravity","splitter","goal","water"]:
+            block.sensor["data"] = block.id
+            block.colour = (162, 239, 242)
+            draw.stage = 0
             draw.reset()
-        elif ty == "splitter":
-            phys.block_list[-1].splitter = True
-            phys.block_list[-1].colour = (162, 239, 242)
-            draw.reset()
+            return draw, phys
 
     if draw.stage == 1:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y,
                                                       type[0] + str(SelectType.vector_direction.value), False)
         if ans == True:
-            if ty == "fire":
-                phys.block_list[-1].booster = draw.vector
+            if ty == "impulse":
+                phys.block_list[-1].sensor["data"] = draw.vector
                 phys.block_list[-1].colour = (242, 222, 162)
-            elif ty == "pusher":
-                phys.block_list[-1].forcer = draw.vector
+            elif ty == "force":
+                phys.block_list[-1].sensor["data"] = draw.vector
                 phys.block_list[-1].colour = (233, 162, 242)
             draw.reset()
 
     return draw, phys
 
 
-def pulley(draw, phys, event, x, y, type, board=None):
+def pulley(draw, phys, event, x, y, type):
     if type[1:] == SelectType.d_straight_join.value:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
                                                       allow_clicked=False, log_clicked=False,
@@ -571,7 +607,7 @@ def pulley(draw, phys, event, x, y, type, board=None):
     return draw, phys
 
 
-def merge_blocks(draw, phys, event, x, y, type, board=None):
+def merge_blocks(draw, phys, event, x, y, type):
     if type[1:] == SelectType.player_select.value:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
                                                       allow_clicked=False, log_clicked=False,
@@ -579,18 +615,18 @@ def merge_blocks(draw, phys, event, x, y, type, board=None):
 
         if ans == True:
             if len(draw.player_list) == 2:
-                phys.merge_blocks(draw.player_list,board=board)
+                phys.merge_blocks(draw.player_list)
                 draw.reset()
             else:
                 coors = list(get_poly_from_two_rectangle_points(draw.locations[0], draw.locations[-1]).exterior.coords)
                 selected = get_all_in_poly(phys, coors)
                 if not selected is False:
-                    phys.merge_blocks(selected,board=board)
+                    phys.merge_blocks(selected)
                     draw.reset()
     return draw, phys
 
 
-def rotation(draw, phys, event, x, y, type, board=None):
+def rotation(draw, phys, event, x, y, type):
     if type[1:] == SelectType.rotation_select.value:
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
                                                       allow_clicked=False, log_clicked=False,
@@ -608,13 +644,13 @@ def fire_bullet(draw, phys, event, x, y, typer, board):
                                                   allow_multiple=False, board = board)
 
     if ans == True:
-        player = [bl for bl in phys.block_list if bl.is_player][0]
+        player = [bl for bl in phys.block_list if bl.can_fire][0]
+
         center = player.body.worldCenter
         center = convert_from_mks(center.x, center.y)
-        if hasattr(player, "width"):
-            width = int(player.width / 3)
-        else:
-            width = player.radius / 2
+
+        width = 5
+
 
         if 5 < width:
             width = 5
@@ -651,9 +687,10 @@ def attach_motor_spin(draw, phys, event, x, y, type, board=None, clockwise = Fal
         draw, phys, clicked, coords = select_player(draw, phys, x, y, None, None, reset_if_not=True, pause=False)
         if not clicked is None:
             joint = get_select_joints_with_motor(clicked)
-            key = get_key_gui()
-            joint_id = clicked.body.joints[int(joint.split("-")[0])].joint.userData
-            clicked.add_move(key, "motor forwards" if clockwise else "motor backwards", joint_id)
+            if not joint is None:
+                key = get_key_gui()
+                joint_id = clicked.body.joints[int(joint.split("-")[0])].joint.userData
+                clicked.add_move(key, "motor forwards" if clockwise else "motor backwards", joint_id)
             draw.reset()
 
     return draw, phys
@@ -907,7 +944,7 @@ def create_terrain(draw,phys,board):
     #phys.create_block(poly_type=5,shape=coords)
 
     phys.fractal_create(coords, terrain=True)
-    phys.merge_blocks(is_terrain=True,board=board)
+    phys.merge_blocks(is_terrain=True)
 
     col = [1, 92, 40]
     for bl in phys.block_list:
@@ -1070,6 +1107,8 @@ def player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=Tru
             if log_clicked:
                 if allow_multiple or len(draw.player_list) == 0:
                     draw.log_player(clicked)
+                    if type[1:] == SelectType.bullet_direction.value:
+                        phys.set_can_fire(clicked)
             else:
                 return draw, phys, clicked
 
@@ -1236,7 +1275,7 @@ def player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=Tru
 
                 if not clicked is None:
                     draw.log_player(clicked)
-                    draw.log_point(x, y, "distance", )
+                    draw.log_point(x, y, "distance")
 
                 if draw.status == "distance" and len(draw.locations) != 1 and len(draw.player_list) == 2:
                     return draw, phys, True
@@ -1282,11 +1321,12 @@ def player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=Tru
             # remove status if new type
             # print(draw.status)
 
-            players = [bl for bl in phys.block_list if bl.is_player]
 
-            if len(players) > 0:
+            fire_list = [bl for bl in phys.block_list if bl.can_fire]
+
+            if len(fire_list) > 0:
                 # set inital
-                center = players[0].body.worldCenter
+                center = fire_list[0].body.worldCenter
                 draw.status = "bullet"
                 if draw.locations == []:
                     draw.locations.append([int(x) for x in convert_from_mks(center.x, center.y)])
@@ -1300,7 +1340,7 @@ def player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=Tru
                     impulse = (((pt1[0] - pt2[0]) * -1) * 2, ((pt1[1] - pt2[1]) * -1) * 2)
                     draw.vector = convert_to_mks(impulse[0], impulse[1])
 
-                if event == cv2.EVENT_LBUTTONDOWN and draw.status == "bullet":
+                if event == cv2.EVENT_LBUTTONDOWN and draw.status == "bullet" and len(draw.locations) > 1:
                     return draw, phys, True
 
             return draw, phys, False
@@ -1411,9 +1451,12 @@ def get_set_selected(draw, phys, new_status, reset_on_none=True, last_loc=False,
         draw.reset()
     # else log the players as selected
     [draw.log_player(bl) for bl in contains]
-    # turn them into sensors for the move so no colision
-    for bl in draw.player_list:
-        bl.sensor = True
+    # turn them into sensors for the move so no collision
+
+    #for bl in draw.player_list:
+    #    bl.sensor = True
+
+
     draw.status = new_status
     draw.locations = []
 

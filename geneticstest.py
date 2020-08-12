@@ -94,7 +94,7 @@ def add(event, x, y, flags, param):
         """
         Used to create Forces sensors
         """
-        draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="pusher")
+        draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="force")
 
 
     elif cur_key[0] == "l" and cur_key_type == 0:
@@ -107,13 +107,63 @@ def add(event, x, y, flags, param):
         """
         Used to create booster sensors
         """
-        draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="fire")
+        draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="impulse")
 
     elif cur_key[0] == "'" and cur_key_type == 0:
         """
         Used to create Goal sensors
         """
         draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="goal")
+
+    elif cur_key[0] == "^" and cur_key_type == 0:
+        """
+        Used to create Gravity sensors
+        """
+        draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="lowgravity")
+
+
+    elif cur_key[0] == "#" and cur_key_type == 0:
+        """
+        Used to create Gravity sensors
+        """
+        draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="gravity")
+
+    elif cur_key[0] == "~" and cur_key_type == 0:
+        """
+        Used to create Gravity sensors
+        """
+        draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="motorsw")
+
+    elif cur_key[0] == "%" and cur_key_type == 0:
+        """
+        Used to create Enlarger sensors
+
+        """
+        draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="sticky")
+
+
+    elif cur_key[0] == "&" and cur_key_type == 0:
+        """
+        Used to create Enlarger sensors
+
+        """
+        draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="water")
+
+
+    elif cur_key[0] == "£" and cur_key_type == 0:
+        """
+        Used to create Enlarger sensors
+        
+        """
+        draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="enlarger")
+
+    elif cur_key[0] == "$" and cur_key_type == 0:
+        """
+        Used to create Enlarger sensors
+
+        """
+        draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="shrinker")
+
 
     elif cur_key[0] == ";" and cur_key_type == 0:
         """
@@ -383,6 +433,7 @@ if __name__ == "__main__":
         # draw joints
         phys.draw_joints()
 
+
         # write lines for drawing
         draw.draw_point()
 
@@ -409,12 +460,12 @@ if __name__ == "__main__":
             goal_hits = phys.check_off()
             msg.goal_hits += goal_hits
 
-            # step the physics engine
+            # step the physics engine1
             phys.world.Step(timeStep, 6, 3)
             phys.world.ClearForces()
 
-        # this applies impulses gathered from any booster sensors.
-        phys.check_sensor_actions()
+            # this applies impulses gathered from any booster sensors.
+            phys.check_sensor_actions()
 
         # check if the player has hit goal and needs reset?
         timer, phys, board, draw, msg = board.reset_me(timer, phys, board, draw, msg)

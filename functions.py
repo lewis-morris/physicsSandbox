@@ -293,17 +293,13 @@ def get_clicked(bodies, x, y, shrink_cir=16):
     block = None
     coords = None
 
-    floor = [bl for bl in bodies if
-             bl.body.fixtures[0].sensor is False and bl.static is True]  # and not bl.force_draw is True)]
-    sensor_blocks = [bl for bl in bodies if bl.body.fixtures[0].sensor == True and bl.foreground == False]
-    player = [bl for bl in bodies if bl.is_player is True]
-    foreground = [bl for bl in bodies if bl.body.fixtures[0].sensor == True and bl.foreground == True]
+    background = [bl for bl in bodies if bl.background]
+    blocks = [bl for bl in bodies if not bl.background and not bl.foreground]
+    foreground = [bl for bl in bodies if bl.foreground]
 
-    # and not bl.force_draw is True)]
-    blocks = [bl for bl in bodies if
-              bl not in sensor_blocks and bl not in floor and bl not in foreground and bl not in player]
 
-    for i in np.arange(len(floor+sensor_blocks+player+blocks) - 1, -1, -1):
+
+    for i in np.arange(len(background+foreground+blocks) - 1, -1, -1):
         if bodies != []:
             bl = bodies[i]
             is_clicked, shape = check_contains(bl, (x, y), shrink_cir)

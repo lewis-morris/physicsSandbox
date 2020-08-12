@@ -117,13 +117,43 @@ def get_toolbar():
 
                "Goal Poly": ["'", SelectType.draw, "Polygon draw of sensor that destroys blocks ('k' toggle)"],
                "Goal Rectangle": ["'", SelectType.rectangle,
-                                  "Rectangle draw of sensor that destroys fragments blocks ('k' toggle)"]}
+                                  "Rectangle draw of sensor that destroys fragments blocks ('k' toggle)"],
 
-    screen_drawing = {"Draw Ground": ["0", SelectType.null, "Toggle drawing of ground blocks on/off ('0' toggle)"],
-                      "Draw Blocks": ["9", SelectType.null, "Toggle drawing of dynamic blocks on/off ('9' toggle)"],
-                      "Draw Sensors": ["8", SelectType.null, "Toggle drawing of sensors on/off ('8' toggle)"],
-                      "Draw Foreground": ["c", SelectType.null,
-                                          "Toggle drawing of foreground elements on/off ('c' toggle)"]}
+               "Motor Sw Poly": ["~", SelectType.draw, "Polygon draw of sensor that switches the direction of a motor ('k' toggle)"],
+               "Motor Sw Rectangle": ["~", SelectType.rectangle,"Rectangle draw of sensor that switches the direction of a motor ('k' toggle)"],
+
+               "Sticky Poly": ["%", SelectType.draw,
+                                 "Polygon draw of sensor that switches the direction of a motor ('k' toggle)"],
+               "Sticky Rectangle": ["%", SelectType.rectangle,
+                                      "Rectangle draw of sensor that switches the direction of a motor ('k' toggle)"],
+
+               "Enlarger Poly": ["£", SelectType.draw,
+                                 "Polygon draw of sensor that switches the direction of a motor ('k' toggle)"],
+               "Enlarger Rectangle": ["£", SelectType.rectangle,
+                                      "Rectangle draw of sensor that switches the direction of a motor ('k' toggle)"],
+
+               "Shrinker Poly": ["$", SelectType.draw,
+                                 "Polygon draw of sensor that switches the direction of a motor ('k' toggle)"],
+               "Shrinker Rectangle": ["$", SelectType.rectangle,
+                                      "Rectangle draw of sensor that switches the direction of a motor ('k' toggle)"],
+
+               "Water Poly": ["&", SelectType.draw,
+                                    "Polygon draw of sensor that switches the direction of a motor ('k' toggle)"],
+               "Water Rectangle": ["&", SelectType.rectangle,
+                                         "Rectangle draw of sensor that switches the direction of a motor ('k' toggle)"],
+
+               "Low Gravity Poly": ["^", SelectType.draw,
+                               "Polygon draw of sensor that switches the direction of a motor ('k' toggle)"],
+               "Low Gravity Rectangle": ["^", SelectType.rectangle,
+                                    "Rectangle draw of sensor that switches the direction of a motor ('k' toggle)"],
+
+               "Gravity Poly": ["#", SelectType.draw, "Polygon draw of sensor that switches gravity ('k' toggle)"],
+                "Gravity Rectangle": ["#", SelectType.rectangle, "Rectangle draw of sensor that switches gravity ('k' toggle)"]}
+
+
+    screen_drawing = {"Draw All": ["0", SelectType.null, "Toggle drawing of all blocks on ('0' toggle)"],
+                      "Draw Set": ["0", SelectType.null, "Toggle drawing to only allocated objects ('0' toggle)"]}
+
 
     joints = {"Merge Blocks": ["j", SelectType.player_select, "Merge two players together"],
 
@@ -171,8 +201,7 @@ def get_toolbar():
     translation = {"Screen Move": ["1", SelectType.select, "Move the screen position with click drag (m toggle)"],
                    "Center Clicked": ["2", SelectType.select,
                                       "Center the board on the selected item if nothing selected clears"]}
-    player = {"Choose Player": ["[", SelectType.null, "Select player to be controlled by the keyboard arrows ([)"],
-              "Fire Bullet": ["]", SelectType.null, "Fire a bullet from the player center to mouse click position (])"]}
+    player = {"Fire Bullet": ["]", SelectType.null, "Fire a bullet from the player center to mouse click position (])"]}
 
     motor = {"Motor Forwards": ["3", SelectType.select, "Move the screen position with click drag (m toggle)"],
              "Motor Backwards": ["4", SelectType.select, "Move the screen position with click drag (m toggle)"]}
@@ -820,19 +849,41 @@ def update_block_values(values, block):
             if k == "colour":
                 v = tuple(int(values["colour"].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
             if hasattr(block, k):
-
-                setattr(block, k, v)
-                if k == "sprite":
-                    block.set_sprite()
-            elif hasattr(block.body, k):
+                if k != "sensor":
+                    setattr(block, k, v)
+                    if k == "sprite":
+                        block.set_sprite()
+            if hasattr(block.body, k):
                 setattr(block.body, k, v)
             if hasattr(block.body.fixtures[0], k):
                 setattr(block.body.fixtures[0], k, v)
+
+    poly = block.get_poly(4)
+    density = sum([fix.density for fix in block.body.fixtures])
+    block.body.mass =convert_to_mks(poly.area)/45 * density
+
+    if values["normal"]:
+        block.background = False
+        block.forground = False
+    elif values["foreground"]:
+        block.background = False
+        block.forground = True
+    elif values["background"]:
+        block.background = True
+        block.forground = False
+
     return block
 
 
 def update_block(block):
     # load upadte block GUI
+    if block.foreground:
+        drawLayer = 1
+    elif block.background:
+        drawLayer = 2
+    else:
+        drawLayer = 3
+
     layout = [[sg.Checkbox(text="Is Awake?", key="awake", default=block.body.awake)],
               [sg.Checkbox(text="Is Active?", key="active", default=block.body.active)],
               [sg.Checkbox(text="Has fixed rotation?", key="fixedRotation", default=block.body.fixedRotation)],
@@ -847,8 +898,9 @@ def update_block(block):
               [sg.Text("restitution"),
                sg.InputText(round(block.body.fixtures[0].restitution, 3), key="restitution")],
               [sg.ColorChooserButton(button_text="Choose Colour", key="colour")],
+              [sg.Radio('Block', "RADIO1", default=True if drawLayer == 3 else False, key="normal"), sg.Radio('Foreground', "RADIO1", default=True if drawLayer == 1 else False , key="foreground"), sg.Radio('Background', "RADIO1", default=True if drawLayer == 2 else False , key="background")],
               [sg.Text("Choose Sprite"), sg.FileBrowse(key="sprite")],
-              [sg.Checkbox(text="Force Draw?", key="force_draw", default=block.force_draw)]
+              [sg.Checkbox(text="Draw on?", key="force_draw", default=block.force_draw)]
               ]
     layout = [[sg.Column(layout)],
               [sg.OK(button_text="Save")]]
@@ -1053,7 +1105,9 @@ def get_select_joints_with_motor(clicked):
                 if event == "listbox":
                     window.close()
                     return values["listbox"][0]
-
+                elif event == sg.WIN_CLOSED:
+                    window.close()
+                    return None
     return None
 
 
