@@ -1,0 +1,11 @@
+PySimpleGUI~=4.24.0
+opencv-python~=4.2.0.34
+numpy~=1.18.1
+Box2D~=2.3.10
+configobj~=5.0.6
+pygame~=1.9.6
+setuptools~=46.1.3
+sect~=0.3.1
+scipy~=1.4.1
+Shapely~=1.7.0
+dill~=0.3.2
