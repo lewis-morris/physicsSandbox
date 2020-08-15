@@ -68,16 +68,18 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
     elif key == ord("p") and cur_key_type == 0:
         # draw polygon
         draw.reset()
-        options = {"Polygon": SelectType.draw, "Rectangle": SelectType.rectangle, "Circle": SelectType.circle}
-        cur_key = msg.auto_set(options, key, force)
+        #msg.set = {"Dynamic Block": draw.get_draw_type()}
+        cur_key = chr(key) + str(draw.get_draw_type().value)
+        msg.set_message("Dynamic Block")
 
-    elif key == ord("b") and cur_key_type == 0:
-        # draw polygon
+    elif key == ord("g") and cur_key_type == 0:
+        # draw ground
         draw.reset()
-        options = {"Fore Polygon": SelectType.draw, "Fore Rectangle": SelectType.rectangle,
-                   "Fore Circle": SelectType.circle}
-        cur_key = msg.auto_set(options, key, force)
+        cur_key = chr(key) + str(draw.get_draw_type().value)
+        msg.set_message("Static Block")
+        #options = {"Static Block": draw.get_draw_type()}
 
+        #cur_key = msg.auto_set(options, key, force)
 
     elif key == ord("i") and cur_key_type == 0:
         # draw terrain
@@ -92,35 +94,29 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
     elif key == ord("f") and cur_key_type == 0:
         # draw fragments or select
         draw.reset()
-        options = {"Fragment Poly": SelectType.draw, "Frament Rectangle": SelectType.rectangle,
-                   "Frament Select": SelectType.select}
+        options = {"Frament Select": SelectType.select} #"Fragment Poly": SelectType.draw, "Frament Rectangle": SelectType.rectangle,
+                   #"Frament Select": SelectType.select}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("g") and cur_key_type == 0:
-        # draw ground
-        draw.reset()
-        options = {"Ground Poly": SelectType.draw, "Ground Rectangle": SelectType.rectangle,
-                   "Ground Circle": SelectType.circle}
-        cur_key = msg.auto_set(options, key, force)
 
     elif key == ord("1") and cur_key_type == 0:
         # fire polygon
         draw.reset()
-        options = {"Create": SelectType.select_point, "Fire Poly": SelectType.vector_direction}
+        options = {"Create": SelectType.select_point, "Fire Block": SelectType.vector_direction}
         cur_key = msg.auto_set(options, key, force)
 
     elif key == ord("4") and cur_key_type == 0:
         # select
         # draw ground
         draw.reset()
-        options = {"Select Joints": SelectType.select}
+        options = {"Joint Update": SelectType.select}
         cur_key = msg.auto_set(options, key, force)
 
     elif key == ord(";") and cur_key_type == 0:
         # select
         # draw ground
         draw.reset()
-        options = {"Select/Print": SelectType.select}
+        options = {"Player Update": SelectType.select}
         cur_key = msg.auto_set(options, key, force)
 
     elif key == ord("2") and cur_key_type == 0:
@@ -165,76 +161,83 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
     elif key == ord("k") and cur_key_type == 0:
         # draw splitter sensor
         draw.reset()
-        options = {"Pusher Poly": SelectType.draw, "Pusher Rectangle": SelectType.rectangle}
-        cur_key = msg.auto_set(options, key, force)
+
+        cur_key = chr(key) + str(draw.get_draw_type().value)
+        msg.set_message("Force")
+
 
     elif key == ord("l") and cur_key_type == 0:
         # draw splitter sensor
         draw.reset()
-        options = {"Splitter Poly": SelectType.draw, "Splitter Rectangle": SelectType.rectangle}
-        cur_key = msg.auto_set(options, key, force)
+        cur_key = chr(key) + str(draw.get_draw_type().value)
+        msg.set_message("Splitter")
+
 
     elif key == ord("/") and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        options = {"Fire Poly": SelectType.draw, "Fire Rectangle": SelectType.rectangle}
-        cur_key = msg.auto_set(options, key, force)
+        cur_key = chr(key) + str(draw.get_draw_type().value)
+        msg.set_message("Impulse")
+
 
     elif key == ord("'") and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        options = {"Goal Poly": SelectType.draw, "Goal Rectangle": SelectType.rectangle}
-        cur_key = msg.auto_set(options, key, force)
+        cur_key = chr(key) + str(draw.get_draw_type().value)
+        msg.set_message("Goal")
+
 
     elif key == ord("~") and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        options = {"Motor Sw Poly": SelectType.draw, "Motor Sw Rectangle": SelectType.rectangle}
-        cur_key = msg.auto_set(options, key, force)
+        cur_key = chr(key) + str(draw.get_draw_type().value)
+        msg.set_message("Motor Switch")
 
     elif key == ord("&") and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        options = {"Water Poly": SelectType.draw, "Water Rectangle": SelectType.rectangle}
-        cur_key = msg.auto_set(options, key, force)
+        cur_key = chr(key) + str(draw.get_draw_type().value)
+        msg.set_message("Water")
 
 
     elif key == ord("^") and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        options = {"Low Gravity Poly": SelectType.draw, "Low Gravity Rectangle": SelectType.rectangle}
-        cur_key = msg.auto_set(options, key, force)
+        cur_key = chr(key) + str(draw.get_draw_type().value)
+        msg.set_message("Low Gravity")
+
 
     elif key == ord("#") and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        options = {"Gravity Poly": SelectType.draw, "Gravity Rectangle": SelectType.rectangle}
-        cur_key = msg.auto_set(options, key, force)
+        cur_key = chr(key) + str(draw.get_draw_type().value)
+        msg.set_message("Gravity Switch")
 
     elif key == ord("%") and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        options = {"Sticky Poly": SelectType.draw, "Sticky Rectangle": SelectType.rectangle}
-        cur_key = msg.auto_set(options, key, force)
+        cur_key = chr(key) + str(draw.get_draw_type().value)
+        msg.set_message("Sticky")
 
     elif key == ord("£") and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        options = {"Enlarger Poly": SelectType.draw, "Enlarger Rectangle": SelectType.rectangle}
-        cur_key = msg.auto_set(options, key, force)
+        cur_key = chr(key) + str(draw.get_draw_type().value)
+        msg.set_message("Enlarger")
+
 
     elif key == ord("$") and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        options = {"Shrinker Poly": SelectType.draw, "Shrinker Rectangle": SelectType.rectangle}
-        cur_key = msg.auto_set(options, key, force)
+        cur_key = chr(key) + str(draw.get_draw_type().value)
+        msg.set_message("Shrinker")
+
 
     elif key == ord("0") and cur_key_type == 0:
         # pause physics
         phys.force_draw_all = not phys.force_draw_all
         options = {"Draw All": SelectType.null, "Draw Set": SelectType.null}
         cur_key = msg.auto_set(options, key, force)
-
 
 
 
@@ -256,7 +259,9 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
 
     elif key == ord("-"):
         # LOAD BOARD
+
         timer, phys, draw, board, msg = load_gui(timer, phys, draw, board, msg, persistant=False)
+        config = phys.config
 
     elif key == ord("5") and cur_key_type == 0:
 
@@ -347,8 +352,8 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
         # draw polygon
 
         draw.reset()
-        options = {"Force": SelectType.vector_direction}
-        cur_key = msg.auto_set(options, key, force)
+        cur_key = chr(key) + str(SelectType.vector_direction.value)
+        msg.set_message("Force")
 
     elif key == ord("0") and cur_key_type == 1:
         # draw polygon
@@ -375,8 +380,9 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
         # draw polygon
 
         draw.reset()
-        options = {"Impulse": SelectType.vector_direction}
-        cur_key = msg.auto_set(options, key, force)
+        cur_key = chr(key) + str(SelectType.vector_direction.value)
+        msg.set_message("Impulse")
+
 
     elif key == ord("8") and cur_key_type == 1:
         # draw polygon
@@ -561,6 +567,33 @@ def draw_sensor(draw, phys, event, x, y, type, ty):
 
         block.sensor["type"] = ty
 
+        if ty == "goal":
+            block.sensor["options"] = {"reset_on_player_hit":True, "fire_action_once_contained": True}
+
+        if ty == "gravity":
+
+            block.sensor["options"] = {"reverse_keys_on_hit": True, "fire_action_once_contained": True}
+
+        if ty == "lowgravity":
+            block.sensor["options"] = {"gravity_scale": 0.05, "fire_action_once_contained": True}
+
+        if ty == "water":
+            block.sensor["options"] = {"density": 10}
+            block.body.fixtures[0].density = 10
+            block.set_mass()
+
+        if ty == "motorsw":
+            block.sensor["options"] = {"id_to_switch": ""}
+
+        if ty == "splitter":
+            block.sensor["options"] = {"min_split_area": "500","allow_multiple_fires":False, "fire_action_once_contained": True}
+
+        if ty == "shrinker":
+            block.sensor["options"] = {"min_area": "300","allow_multiple_fires":True,"shrink_ratio":0.05, "fire_action_once_contained": True}
+
+        if ty == "enlarger":
+            block.sensor["options"] = {"max_area": "10000","allow_multiple_fires":True,"enlarge_ratio":1.05, "fire_action_once_contained": True}
+
         block.colour = (66, 218, 245)
         block.draw_me = True
 
@@ -573,7 +606,7 @@ def draw_sensor(draw, phys, event, x, y, type, ty):
         draw.log_point(cenX, cenY, "fire")
 
 
-        if ty in ["shrinker", "enlarger","gravity","splitter","goal","water"]:
+        if ty in ["shrinker", "enlarger","gravity","splitter","lowgravity","goal","water","sticky","motorsw"]:
             block.sensor["data"] = block.id
             block.colour = (162, 239, 242)
             draw.stage = 0
@@ -584,12 +617,13 @@ def draw_sensor(draw, phys, event, x, y, type, ty):
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y,
                                                       type[0] + str(SelectType.vector_direction.value), False)
         if ans == True:
-            if ty == "impulse":
-                phys.block_list[-1].sensor["data"] = draw.vector
-                phys.block_list[-1].colour = (242, 222, 162)
-            elif ty == "force":
-                phys.block_list[-1].sensor["data"] = draw.vector
-                phys.block_list[-1].colour = (233, 162, 242)
+
+            block = phys.block_list[-1]
+            for fix in block.body.fixtures:
+                fix.sensor = True
+            block.sensor["type"] = ty
+            block.sensor["options"] = {"vector": draw.vector, "fire_action_once_contained": True, "allow_multiple_fires": False}
+
             draw.reset()
 
     return draw, phys
@@ -722,7 +756,8 @@ def add_impulse(draw, phys, event, x, y, type, board=None, relative = False):
             if len(draw.player_list) > 0:
                 for bl in draw.player_list:
                     key = get_key_gui()
-                    bl.add_move(key, "relative impulse" if relative else "impulse", draw.vector)
+                    if not key is None:
+                        bl.add_move(key, "relative impulse" if relative else "impulse", draw.vector)
                     draw.reset()
 
     return draw, phys

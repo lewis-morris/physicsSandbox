@@ -1,11 +1,8 @@
 from enum import Enum
-
-import cv2
 from shapely.geometry import Polygon
-
-from functions import get_squ, check_contains_all, get_clicked, convert_to_mks, calculateDistance, get_all_in_poly
+from functions import calculateDistance
 import numpy as np
-from Box2D import b2MouseJoint, b2RevoluteJoint
+
 
 
 class SelectType(Enum):
