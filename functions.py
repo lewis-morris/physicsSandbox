@@ -218,7 +218,8 @@ def get_config(main, sub, configIn=None):
                 return list([float(x) if "." in str(x) else int(x) for x in val])
             except:
                 return list([x.strip() for x in val])
-
+    elif "(" in val:
+        return tuple([float(x.replace("(", "").replace(")", "")) for x in val.split(",")])
     elif "true" in val.lower() or "false" in val.lower():
         return True if val.lower() == "true" else False
 

@@ -1,3 +1,4 @@
+import copy
 import random
 
 import cv2
@@ -6,7 +7,7 @@ import numpy as np
 from shapely import affinity
 
 from draw_functions import SelectType
-from functions import get_config, convert_from_mks, create_floor_poly
+from functions import get_config, convert_from_mks, create_floor_poly, rotate_around_point_highperf
 from gui import save_gui, load_gui, load_options, update_background, get_key_gui, get_select_joints_with_motor, \
     terrain_complexity_gui
 from objects import Messenger, load, pickler
@@ -212,6 +213,12 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
         draw.reset()
         cur_key = chr(key) + str(draw.get_draw_type().value)
         msg.set_message("Gravity Switch")
+
+    elif key == ord(")") and cur_key_type == 0:
+        # draw booster sensor
+        draw.reset()
+        cur_key = chr(key) + str(draw.get_draw_type().value)
+        msg.set_message("Center")
 
     elif key == ord("%") and cur_key_type == 0:
         # draw booster sensor
@@ -567,6 +574,9 @@ def draw_sensor(draw, phys, event, x, y, type, ty):
 
         block.sensor["type"] = ty
 
+        if ty == "center":
+            block.sensor["options"] = {"translation": str(phys.board.translation), "allow_multiple_fires":False, "fire_action_once_contained": True}
+
         if ty == "goal":
             block.sensor["options"] = {"reset_on_player_hit":True, "fire_action_once_contained": True}
 
@@ -606,7 +616,7 @@ def draw_sensor(draw, phys, event, x, y, type, ty):
         draw.log_point(cenX, cenY, "fire")
 
 
-        if ty in ["shrinker", "enlarger","gravity","splitter","lowgravity","goal","water","sticky","motorsw"]:
+        if ty in ["shrinker","center", "enlarger","gravity","splitter","lowgravity","goal","water","sticky","motorsw"]:
             block.sensor["data"] = block.id
             block.colour = (162, 239, 242)
             draw.stage = 0
@@ -715,7 +725,7 @@ def rotate_attach(draw, phys, event, x, y, type, board=None, direction=None):
     return draw, phys
 
 
-def attach_motor_spin(draw, phys, event, x, y, type, board=None, clockwise = False):
+def attach_motor_spin(draw, phys, event, x, y, type, board=None, clockwise=True):
 
     if event == cv2.EVENT_LBUTTONDOWN:
         draw, phys, clicked, coords = select_player(draw, phys, x, y, None, None, reset_if_not=True, pause=False)
@@ -723,8 +733,9 @@ def attach_motor_spin(draw, phys, event, x, y, type, board=None, clockwise = Fal
             joint = get_select_joints_with_motor(clicked)
             if not joint is None:
                 key = get_key_gui()
-                joint_id = clicked.body.joints[int(joint.split("-")[0])].joint.userData
-                clicked.add_move(key, "motor forwards" if clockwise else "motor backwards", joint_id)
+                joint_id = clicked.body.joints[int(joint.split("-")[0])].joint.userData["id"]
+                dir = "motor forwards" if clockwise else "motor backwards"
+                clicked.add_move(key, dir, joint_id, joint_id)
             draw.reset()
 
     return draw, phys
@@ -740,7 +751,7 @@ def add_force(draw, phys, event, x, y, type, board=None, relative = False):
             if len(draw.player_list) > 0:
                 for bl in draw.player_list:
                     key = get_key_gui()
-                    bl.add_move(key, "relative force" if relative else "force", draw.vector)
+                    bl.add_move(key, "relative force" if relative else "force",draw.vector)
                     draw.reset()
 
     return draw, phys
@@ -1553,7 +1564,7 @@ def clone_players(draw, phys):
         item_list.append(phys.save_block_as_dict(bl))
 
     # clone them
-    new_obs = phys.create_pre_def_block(item_list, convert_joints=False)
+    new_obs = phys.create_pre_def_block(item_list, convert_joints=False,clone=True)
     draw.player_list = phys.block_list[-new_obs:]
     draw.clone_created = True
     return draw, phys

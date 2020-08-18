@@ -105,6 +105,11 @@ def load(height=800, width=1200, b_height=None, b_width=None):
 
 def pickler(timer, phys, draw, board, msg, pickle_name, blurb):
     config = ConfigObj('config.cfg')
+    for k,v in phys.options.items():
+        for kk,vv in v.items():
+            config[k][kk] = str(vv)
+    config.write()
+
     board.board_name = pickle_name
     pickle_dic = {"timer": timer, "board": board, "msg": msg, "config": config, "blurb": blurb}
     item_list = []
@@ -134,8 +139,7 @@ def load_state(pickle_name):
     timer = pickle_dic["timer"]
     board = pickle_dic["board"]
     msg = pickle_dic["msg"]
-    phys = Physics(pickle_dic["phys"]["options"]["physics"]["gravity"])
-    phys.config = config
+    phys = Physics(pickle_dic["phys"]["options"]["physics"]["gravity"],config)
 
     for k, v in pickle_dic["phys"].items():
         if k in phys.__dict__.keys():
@@ -149,7 +153,7 @@ def load_state(pickle_name):
     phys.create_pre_def_block(pickle_dic["blocks"], convert_joints=False)
     phys.world.contactListener = Contacter()
 
-    phys.change_config(config)
+    #phys.change_config(config)
 
     draw.board = board
     phys.board = board
@@ -465,6 +469,7 @@ class Physics():
         self.pause = False
         self.draw_objects = {"draw_all": False}
         self.options = {}
+        self.config = config
         self.change_config(config=config)
         self.move_keys_list = {}
         self.force_draw_all = False
@@ -479,10 +484,16 @@ class Physics():
         for bl in [bl for bl in self.block_list if bl.keys != {}]:
             for k, keys_vals in bl.keys.items():
                 for action in keys_vals:
-                    if ord(k) == key and k != None:
+                    if k != None and ord(k) == key:
                         #if cancel rotation
-                        if action["cancel_rotation"]:
-                            bl.body.angularRotation = 0
+                        if "cancel_rotation" in action.keys():
+                            if action["cancel_rotation"]:
+                                bl.body.angularVelocity = 0
+
+                        if "cancel_velocity" in action.keys():
+                            if action["cancel_velocity"]:
+                                bl.body.linearVelocity = (0,0)
+
 
                         # if the toggle is activated the switch the toggle on keypress
                         if action["toggle_allowed"] == True and ord(k) == key:
@@ -564,27 +575,62 @@ class Physics():
                                     print("Block missing error - TODO fix this")
 
                             elif "motor" in action["type"]:
-                                for jn in bl.body.joints:
-                                    if not jn.joint.userData is None:
-                                        if jn.joint.userData["id"] == action["extra"]["id"]:
-                                            jn.joint.motorEnabled = True
-                                            if action["type"] == "motor forwards":
-                                                if jn.joint.motorSpeed > 0:
-                                                    jn.joint.motorSpeed *= -1
-                                            elif action["type"] == "motor backwards":
-                                                if jn.joint.motorSpeed < 0:
-                                                    jn.joint.motorSpeed *= -1
+
+                                #check its the correct motor
+                                motor_id = action["id"]
+                                joint = [jn.joint for jn in bl.body.joints if jn.joint.userData["id"] == action["id"]]
+                                if joint != []:
+                                    joint = joint[0]
+                                    #set the current key
+                                    joint.userData["key"] = k
+                                    joint.motorEnabled = True
+                                    #does the motor need to
+                                    if action["hold_motor_in_place"]:
+                                        lower = float(joint.userData["old_lower_upper"][0])
+                                        upper = float(joint.userData["old_lower_upper"][1])
+                                        joint.SetLimits(lower, upper)
+
+                                        if "Prismatic" in str(type(joint)):
+                                            vector = joint.userData["vector"]
+                                            vector = np.array(rotate_around_point_highperf(vector, joint.GetReferenceAngle()))
+                                            bl.body.ApplyForce(vector if joint.motorSpeed >= 0 else -vector,bl.body.worldCenter, wake=True)
+                                        #joint.limits joint.userData["old_lower_upper"]
+
+                                    if action["type"] == "motor forwards":
+                                        if joint.motorSpeed > 0:
+                                            joint.motorSpeed *= -1
+                                    elif action["type"] == "motor backwards":
+                                        if joint.motorSpeed < 0:
+                                            joint.motorSpeed *= -1
 
                     # if not keypress and not toggle
                     else:
-                        # turn off motors if not pressed
-                        for jn in bl.body.joints:
-                            if not jn.joint.userData is None:
-                                if action["type"].find("motor") > -1 and jn.joint.userData["id"] == action["extra"][
-                                    "id"]:
-                                    if (action["toggle_allowed"] is True and action["toggle_status"] is False) or \
-                                            action["toggle_allowed"] is False:
-                                        jn.joint.motorEnabled = False
+                        motor_id = action["id"]
+                        joint = [jn.joint for jn in bl.body.joints if jn.joint.userData["id"] == action["id"]]
+                        if joint != []:
+                            joint = joint[0]
+                            if (action["toggle_allowed"] is True and action["toggle_status"] is False) or action["toggle_allowed"] is False:
+                                    if k == joint.userData["key"]:
+                                        joint.motorEnabled = False
+
+                                        #
+                                        if action["hold_motor_in_place"]:
+                                            if "Revolute" in str(type(joint)):
+                                                joint.userData["current_position"] = joint.angle
+                                                pos = joint.userData["current_position"]
+                                                if pos != 0:
+                                                    joint.SetLimits(pos + (-0.01 if pos > 0 else 0.01),
+                                                                    pos + (0.01 if pos > 0 else -0.01))
+                                            elif "Prismatic" in str(type(joint)):
+                                                joint.userData["current_position"] = joint.translation
+                                                pos = joint.userData["current_position"]
+                                                if pos != 0:
+                                                    joint.SetLimits(pos + (0.3 if pos > 0 else -0.3 ),
+                                                                pos + (-0.3 if pos > 0 else 0.3))
+
+
+
+
 
     def change_config(self, config=None, board=None):
         if config is None:
@@ -601,7 +647,7 @@ class Physics():
                     if kk == "gravity":
                         grav_val = val
                         self.gravity = grav_val
-                        self.world.gravity = b2Vec2(grav_val[0], grav_val[1])
+                        self.world.gravity = (float(grav_val[0]), float(grav_val[1]))
                     elif kk == "palette":
                         if not board is None:
                             palette = val
@@ -626,7 +672,7 @@ class Physics():
                 if not block.static:
                     self.delete(block)
 
-    def save_block_as_dict(self, block):
+    def save_block_as_dict(self, block,clone=False):
 
         """
         used to split the block into a dict of information for pickling
@@ -636,6 +682,9 @@ class Physics():
 
         # get main block information
         block_dic = {k: v for k, v in block.__dict__.items() if not "b2" in str(type(v))}
+
+        #create a clone id for identifying the object when recreating
+        clone_id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))
 
         # if block.type == 2 or block.type == -2:
         #     block_dic["shape"] = block.radius
@@ -657,6 +706,9 @@ class Physics():
                     "awake": block.body.awake,
                     "angle": block.body.angle,
                     "mass": block.body.mass}
+
+        body_user_dict = {k: (v if not "b2" in str(type(v)) else str(type(v))) for k, v in block.body.userData.items()}
+        body_user_dict["ob"] = None
 
         mas_dic = {"mass": block.body.massData.mass,
                    "I": block.body.massData.I,
@@ -683,6 +735,7 @@ class Physics():
                 shape_dic[i]["pos"] = (fix.shape.pos.x, fix.shape.pos.y)
 
         all_joints = {}
+        all_joints_userData = {}
         for i, joint in enumerate(block.body.joints):
             joints_dic = {"type": type(joint.joint)}
 
@@ -700,13 +753,13 @@ class Physics():
                     anc = joint.joint.anchorB
                     joints_dic["anchorB"] = [anc.x, anc.y]
                 elif attr is "bodyA" and hasattr(joint.joint, "bodyA"):
-                    joints_dic["bodyA"] = joint.joint.bodyA.userData["ob"].id
+                    joints_dic["bodyA"] = joint.joint.bodyA.userData["ob"].id if joint.joint.bodyA.userData["ob"].id != block.id else clone_id if clone else block.id
                 elif attr is "bodyB" and hasattr(joint.joint, "bodyB"):
-                    joints_dic["bodyB"] = joint.joint.bodyB.userData["ob"].id
+                    joints_dic["bodyB"] = joint.joint.bodyB.userData["ob"].id if joint.joint.bodyB.userData["ob"].id != block.id else clone_id if clone else block.id
                 elif attr is "groundAnchorA" and hasattr(joint.joint, "groundAnchorA"):
-                    joints_dic["groundAnchorA"] = joint.joint.groundAnchorA.userData["ob"].id
+                    joints_dic["groundAnchorA"] = joint.joint.groundAnchorA.userData["ob"].id if joint.joint.groundAnchorA.userData["ob"].id != block.id else clone_id if clone else block.id
                 elif attr is "groundAnchorB" and hasattr(joint.joint, "groundAnchorB"):
-                    joints_dic["groundAnchorB"] = joint.joint.groundAnchorA.userData["ob"].id
+                    joints_dic["groundAnchorB"] = joint.joint.groundAnchorB.userData["ob"].id if joint.joint.groundAnchorB.userData["ob"].id != block.id else clone_id if clone else block.id
                 else:
                     ok = False
                     if "get" + attr.lower() in lower_attributes:
@@ -722,12 +775,28 @@ class Physics():
                     if ok and "b2" not in str(type(val)):
                         joints_dic[attr] = val
 
+            try:
+                #ax = block.body.GetWorldPoint(joint.joint.GetLocalAxisA())
+                joints_dic["axis"] = joint.joint.userData["vector"]
+            except:
+                pass
+
             all_joints[i] = joints_dic
 
-        return {"block": block_dic, "body": body_dic, "mass": mas_dic, "fixtures": fixtures_dic, "shapes": shape_dic,
-                "joints": all_joints}
+            #save joints userdata
+            current_joint_userData = {}
+            for k,v in joint.joint.userData.items():
+                if "b2" in str(type(v)):
+                    current_joint_userData[k] = str(type(v))
+                else:
+                    current_joint_userData[k] = v
 
-    def create_pre_def_block(self, info, convert_joints=True):
+            all_joints_userData[i] = current_joint_userData
+
+        return {"block": block_dic, "body": body_dic,"body_user_dict":body_user_dict, "mass": mas_dic, "fixtures": fixtures_dic, "shapes": shape_dic,
+                "joints": all_joints,"joints_userData":all_joints_userData,"clone_id":clone_id}
+
+    def create_pre_def_block(self, info, convert_joints=True,clone=False):
 
         new_obs = 0
         # loop and create each item again
@@ -803,8 +872,10 @@ class Physics():
             # if block.sprite_on and not type(block.sprite) is None:
             #     block.set_sprite(force=True)
 
-            block.id = new_id
-            block.old_id = block_info["block"]["id"]
+            if clone:
+                block.id = block_info["clone_id"]
+                block.old_id = block_info["block"]["id"]
+                #block.clone_id
 
             for k, v in block_info["body"].items():
                 if hasattr(block.body, k):
@@ -844,15 +915,24 @@ class Physics():
 
             new_obs += 1
 
+            #set userData
+            for k,v in block_info["body_user_dict"].items():
+                if not "ob" in k:
+                    block.body.userData[k] = v
+
+            block.body.userData["ob"] = block
+
         # get individual joints
-        joints = [x["joints"] for x in info]
+
+        joints = [x["joints"] for x in info if x["joints"] != {}]
+        jointsUser = [x["joints_userData"] for x in info if x["joints_userData"] != {}]
         i = 0
         new_joints = {}
         for joint in joints:
             for k, v in joint.items():
                 if v not in new_joints.values():
                     new_joints[i] = v
-                    i += 1
+
                     a = self.get_block_by_id(v["bodyA"])
                     b = self.get_block_by_id(v["bodyB"])
                     if v["type"] == b2RopeJoint:
@@ -863,16 +943,21 @@ class Physics():
                         self.create_rotation_joint(a, b, v["anchorA"], convert_joints)
                     elif v["type"] == b2WeldJoint:
                         self.create_weld_joint(a, b, v["anchorA"], convert_joints)
+                    elif v["type"] == b2PrismaticJoint:
+                        self.create_prismatic(a, b, vector=v["axis"], anchor= v["anchorA"], distance=v["upperLimit"],convert=convert_joints)
+                    elif v["type"] == b2PulleyJoint:
+                        self.create_pulley(a,b,v["lines"])
                     else:
                         print("help")
 
-                    # loop the sorted values and update
+                    # loop the sorted values and update,v["anchorA"][1],v["anchorA"][1]
                     this_joint = self.world.joints[-1]
                     methods = inspect.getmembers(this_joint, lambda a: (inspect.isroutine(a)))
                     lower_methods = [x[0].lower() for x in
                                      [a for a in methods if not (a[0].startswith('__') and a[0].endswith('__'))]]
                     methods = [x[0] for x in
                                [a for a in methods if not (a[0].startswith('__') and a[0].endswith('__'))]]
+
 
                     for key, val in v.items():
                         if not key in ["anchorA", "anchorB", "bodyA", "bodyB", "groundAnchorA", "groundAnchorB",
@@ -899,11 +984,20 @@ class Physics():
                                 except:
                                     pass
 
+                    try:
+                        for k,v in jointsUser[i][0].items():
+                            self.world.joints[-1].userData[k] = v
+                    except IndexError:
+                        pass
+
+
+
+                i += 1
         return new_obs
 
     def get_block_by_id(self, id):
 
-        blocks = [bl for bl in self.block_list if bl.old_id == id]
+        blocks = [bl for bl in self.block_list if bl.id == id]
         if blocks != []:
             return blocks[-1]
         else:
@@ -1298,6 +1392,15 @@ class Physics():
                                     except ValueError:
                                         # error setting value
                                         pass
+
+                if act["type"] == "center" and act["complete"] is False:
+                    if (contains_poly and act["fire_action_once_contained"]) or not act["fire_action_once_contained"]:
+
+                        bl.center_me = True
+                        bl.death_actions["return_translation"] =  act["translation"]
+                        if not act["allow_multiple_fires"]:
+                            act["complete"] = True
+
                 if act["type"] == "impulse" and act["complete"] is False:
                     if (contains_poly and act["fire_action_once_contained"]) or not act["fire_action_once_contained"]:
 
@@ -1558,25 +1661,42 @@ class Physics():
                 start = convert_from_mks(jn.anchorA.x, jn.anchorA.y)
                 end = convert_from_mks(jn.anchorB.x, jn.anchorB.y)
 
-                self.board.board_copy = cv2.line(self.board.board_copy,
+                try:
+                    self.board.board_copy = cv2.line(self.board.board_copy,
                                                  tuple(np.array([int(x) for x in start]) + self.board.translation),
                                                  tuple(np.array([int(x) for x in end]) + self.board.translation), col,
                                                  2)
-
+                except:
+                    pass
     def create_weld_joint(self, a, b, pos, convert=True):
 
         self.world.CreateWeldJoint(bodyA=a.body,
                                    bodyB=b.body,
                                    anchor=(convert_to_mks(pos[0], pos[1]) if convert else pos))
 
+        b.body.active = True
+        b.body.awake = True
+        a.body.active = True
+        a.body.awake = True
+
+        self.world.joints[-1].userData = {
+            "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
     def create_rotation_joint(self, a, b, pos, convert=True):
 
         self.world.CreateRevoluteJoint(bodyA=a.body,
                                        bodyB=b.body,
                                        anchor=(convert_to_mks(pos[0], pos[1]) if convert else pos))
+        b.body.active = True
+        b.body.awake = True
+        a.body.active = True
+        a.body.awake = True
 
         self.world.joints[-1].userData = {
             "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
+        self.world.joints[-1].userData["old_lower_upper"] = self.world.joints[-1].limits
+        self.world.joints[-1].userData["key"] = None
+        self.world.joints[-1].userData["current_position"] =  self.world.joints[-1].angle
+        self.world.joints[-1].userData["times_allowed"] = 3
 
     def create_mouse_joint(self, a, x, y):
 
@@ -1596,13 +1716,27 @@ class Physics():
         a.body.active = True
         a.body.awake = True
 
-    def create_prismatic(self, a, b, vector, anchor, distance):
-
-        self.world.CreatePrismaticJoint(bodyA=a.body, bodyB=b.body, anchor=convert_to_mks(anchor[0], anchor[1]),
-                                        axis=vector, enableLimit=True, upperTranslation=convert_to_mks(distance))
-
         self.world.joints[-1].userData = {
             "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
+
+    def create_prismatic(self, a, b, vector, anchor, distance,convert=True):
+
+        if convert:
+            anchor = convert_to_mks(anchor[0], anchor[1])
+
+        self.world.CreatePrismaticJoint(bodyA=a.body, bodyB=b.body, anchor=anchor,
+                                        axis=vector, enableLimit=True, upperTranslation=convert_to_mks(distance))
+
+        b.body.active = True
+        b.body.awake = True
+        a.body.active = True
+        a.body.awake = True
+        self.world.joints[-1].userData = {
+            "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),"vector":(vector[0],vector[1])}
+        self.world.joints[-1].userData["old_lower_upper"] = self.world.joints[-1].limits
+        self.world.joints[-1].userData["key"] = None
+        self.world.joints[-1].userData["current_position"] =  self.world.joints[-1].translation
+        self.world.joints[-1].userData["times_allowed"] = 3
 
     def create_pulley(self, a, b, lines):
         lines = [convert_to_mks(x[0], x[1]) for x in lines]
@@ -1615,9 +1749,15 @@ class Physics():
                                      ratio=1)
         # maxLengthA=calculateDistance(lines[0][0], lines[0][1], lines[1][0], lines[1][1]),
         # maxLengthB=calculateDistance(lines[2][0], lines[2][1], lines[3][0], lines[3][1]))
-
+        b.body.active = True
+        b.body.awake = True
+        a.body.active = True
+        a.body.awake = True
         self.world.joints[-1].userData = {
             "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
+        self.world.joints[-1].userData["old_lower_upper"] = self.world.joints[-1].limits
+        self.world.joints[-1].userData["key"] = None
+        self.world.joints[-1].userData["times_allowed"] = 3
 
     def create_chain(self, a, b, lines, stretchy=False):
         last_ob = 0
@@ -1681,6 +1821,10 @@ class Physics():
                                                bodyB=blockB,
                                                anchor=convert_to_mks(line1[0], line1[1]),
                                                collideConnected=False)
+                b.body.active = True
+                b.body.awake = True
+                a.body.active = True
+                a.body.awake = True
                 # self.world.CreateDistanceJoint(bodyA=blockA,
                 # bodyB=blockB,
                 # anchorA=convert_to_mks(center_point[0], center_point[1]),
@@ -1733,7 +1877,10 @@ class Physics():
                                            bodyB=blockB,
                                            anchor=((blockA.worldCenter.x + blockB.worldCenter.x) / 2,
                                                    (blockA.worldCenter.y + blockB.worldCenter.y) / 2))
-
+            b.body.active = True
+            b.body.awake = True
+            a.body.active = True
+            a.body.awake = True
             if end:
                 return
 
@@ -1783,6 +1930,11 @@ class Physics():
                                            anchorB=blockB.worldCenter if i != len(lines_new) - 2 else convert_to_mks(
                                                lines[-1][0], lines[-1][1]),
                                            collideConnected=False)
+            b.body.active = True
+            b.body.awake = True
+            a.body.active = True
+            a.body.awake = True
+
             self.world.joints[-1].frequency = 50000
             self.world.joints[-1].frequencyHz = 50000
             self.world.joints[-1].dampingRatio = 0
@@ -1802,6 +1954,9 @@ class Physics():
                                        anchorB=bAnchor,
                                        collideConnected=True)
 
+        self.world.joints[-1].userData = {
+            "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
+
     def create_rope_joint(self, a, b, aAnchor, bAnchor, maxLength, convert=True):
 
         if convert:
@@ -1816,8 +1971,16 @@ class Physics():
                                    maxLength=maxLength,
                                    collideConnected=True)
 
+        self.world.joints[-1].userData = {
+            "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
+
     def delete(self, bl):
         # destroy joints
+
+        for k,v in bl.death_actions.items():
+            if k == "return_translation":
+                trans = [x.replace("[","").replace("]","").replace(",","") for x in v.split(" ")]
+                self.board.translation = [int(x) for x in trans if x != ""]
 
         for i, joint in enumerate(bl.body.joints):
 
@@ -1936,6 +2099,9 @@ class _Base_Block():
         self.is_player = False
         self.is_onscreen = True
         self.onscreen_status = {"force_awake": False, "force_alive": False}
+
+        self.death_actions = {}
+
         if set_sprite:
             self.set_sprite()
 
@@ -1966,7 +2132,7 @@ class _Base_Block():
         poly = self.get_poly(4)
         self.body.mass = convert_to_mks(poly.area) / 45 * density
 
-    def add_move(self, key, type, extra):
+    def add_move(self, key, type, extra,id=None):
         """
         Used to add keys and actions to be fired on keypress
 
@@ -1980,13 +2146,13 @@ class _Base_Block():
         if key in self.keys:
             self.keys[key].append(
                 {"type": type, "extra": extra, "multiplier": 1, "limit_x_speed": False, "limit_y_speed": False,
-                 "enforce_ground_touch": False, "toggle_allowed": False, "toggle_status": False,"cancel_rotation":False,
-                 "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))})
+                 "enforce_ground_touch": False, "toggle_allowed": False, "toggle_status": False,"cancel_rotation":False,"cancel_velocity":False,
+                 "hold_motor_in_place":False, "id": id})
         else:
             self.keys[key] = [
                 {"type": type, "extra": extra, "multiplier": 1, "limit_x_speed": False, "limit_y_speed": False,
-                 "enforce_ground_touch": False, "toggle_allowed": False, "toggle_status": False, "cancel_rotation":False,
-                 "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}]
+                 "enforce_ground_touch": False, "toggle_allowed": False, "toggle_status": False, "cancel_rotation":False,"cancel_velocity":False,
+                  "hold_motor_in_place":False, "id": id}]
 
     def get_poly(self, rad=5):
 
@@ -2552,6 +2718,16 @@ class Contacter(b2ContactListener):
                 block.body.userData["actions"].append(
                     {"type": sensor.sensor["type"], "id": sensor.id, "complete": False})
 
+        # check if water
+        if sensor.sensor["type"] in ["center"]:
+            done = sum([1 for act in block.body.userData["actions"] if act["id"] == sensor.id])
+            if done == 0:
+                block.body.userData["actions"].append(
+                    {"type": sensor.sensor["type"], "id": sensor.id, "complete": False,
+                     "allow_multiple_fires": sensor.sensor["options"]["allow_multiple_fires"],
+                     "translation": sensor.sensor["options"]["translation"],
+                     "fire_action_once_contained": sensor.sensor["options"]["fire_action_once_contained"]})
+
         # check if bullet
         if sensor.sensor["type"] == "bullet" and sensor.sensor["data"] != block.id:
             # destroy bullets on hitting object with a mass > 200 else let it keep moving
@@ -2591,7 +2767,7 @@ class Contacter(b2ContactListener):
         try:
             # check if gravity
             if sensor.sensor["type"] in ["impulse", "force", "gravity", "motorsw", "enlarger", "shrinker", "splitter",
-                                         "sticky", "water"]:
+                                         "sticky", "water","center"]:
                 self.remove_action(sensor, block)
 
             # check if water leave

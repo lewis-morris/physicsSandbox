@@ -1,3 +1,4 @@
+import ast
 import inspect
 
 import PySimpleGUI as sg
@@ -25,7 +26,8 @@ def getVariableName(variable):
 
 def get_key_gui():
     layout = [[sg.Text("Which key should fire this event?")],
-              [sg.InputText("", key="input"), sg.Button("Ok", enable_events=True, key="Button"),sg.Button("Close", enable_events=True, key="close")]]
+              [sg.InputText("", key="input"), sg.Button("Ok", enable_events=True, key="Button"),
+               sg.Button("Close", enable_events=True, key="close")]]
     window = sg.Window('Key Allocation', layout)
 
     while True:
@@ -50,90 +52,97 @@ def get_key_gui():
             window.close()
             return None
 
+
 def get_toolbar():
-    gameplay = {"Reset": ["r", SelectType.null, "Reset the board to defaults (r)",False],
-                "Quit": ["q", SelectType.null, "Quit the game (q)",False],
-                "Pause": ["o", SelectType.null, "Toggle game play on/off ('o' toggle)",False],
-                "Save": ["*", SelectType.null, "Save current state (*)",False],
-                "Load": ["-", SelectType.null, "Load a saves state (-)",False]}
+    gameplay = {"Reset": ["r", SelectType.null, "Reset the board to defaults (r)", False],
+                "Quit": ["q", SelectType.null, "Quit the game (q)", False],
+                "Pause": ["o", SelectType.null, "Toggle game play on/off ('o' toggle)", False],
+                "Save": ["*", SelectType.null, "Save current state (*)", False],
+                "Load": ["-", SelectType.null, "Load a saves state (-)", False]}
 
-    draw_type = {"Polygon": ["Polygon", None, "Select draw type as Polygon",True],
-                 "Rectangle": ["Rectangle", None, "Select draw type as Rectangle",True],
-                 "Circle": ["Circle", None, "Select draw type as Circle",True]}
+    draw_type = {"Polygon": ["Polygon", None, "Select draw type as Polygon", True],
+                 "Rectangle": ["Rectangle", None, "Select draw type as Rectangle", True],
+                 "Circle": ["Circle", None, "Select draw type as Circle", True]}
 
+    creation = {"Spawn": ["z", None, "Spawn a player from the predefined spawn point (z)", False],
+                "Set Spawn": ["v", SelectType.null, "Set spawn point on click (v)", True],
+                "Remove Blocks": ["e", SelectType.null, "Remove all dynamic blocks from scene (e)", True],
+                "Frag All": ["h", SelectType.null, "Fragment all blocks (h)", False],
+                "Delete": ["x", SelectType.select, "Delete a player with mouse - click or select (x)", True],
+                "Delete Joint": ["u", SelectType.select, "Delete attached joints (u)", True],
+                "Create": ["1", SelectType.select_point, "Create a block on mouse click (1 toggle)", True],
+                "Fire Block": ["1", SelectType.vector_direction, "Fire a block on mouse click and drag (1 toggle)",
+                               True],
+                "Generate Terrain": ["i", SelectType.null, "Generate Terrain", False],
+                "Fragment Select": ["f", SelectType.select,
+                                    "Draw a fragmented circle that reacts to physics (f toggle)", True]}
 
-    creation = {"Spawn": ["z", None, "Spawn a player from the predefined spawn point (z)",False],
-                "Set Spawn": ["v", SelectType.null, "Set spawn point on click (v)",True],
-                "Remove Blocks": ["e", SelectType.null, "Remove all dynamic blocks from scene (e)",True],
-                "Frag All": ["h", SelectType.null, "Fragment all blocks (h)",False],
-                "Delete": ["x", SelectType.select, "Delete a player with mouse - click or select (x)",True],
-                "Delete Joint": ["u", SelectType.select, "Delete attached joints (u)",True],
-                "Create": ["1", SelectType.select_point, "Create a block on mouse click (1 toggle)",True],
-                "Fire Block": ["1", SelectType.vector_direction, "Fire a block on mouse click and drag (1 toggle)",True],
-                "Generate Terrain": ["i", SelectType.null, "Generate Terrain",False],
-                "Fragment Select": ["f", SelectType.select, "Draw a fragmented circle that reacts to physics (f toggle)",True]}
+    translation = {"Mouse Move": ["m", SelectType.select, "Move selected player with physics (m toggle)", True],
+                   "Normal Move": ["m", SelectType.null, "Move selected player(s) paused physics (m toggle)", True],
+                   "Clone Move": ["m", SelectType.null, "Clone selected player(s) paused physics (m toggle)", True],
+                   "Transform": ["t", SelectType.player_select, "Transform selected player(s) (t toggle)", True],
+                   "Rotate": ["2", SelectType.player_select, "Rotate player(s) on click or select (2)", True]}
 
-    translation = {"Mouse Move": ["m", SelectType.select, "Move selected player with physics (m toggle)",True],
-                   "Normal Move": ["m", SelectType.null, "Move selected player(s) paused physics (m toggle)",True],
-                   "Clone Move": ["m", SelectType.null, "Clone selected player(s) paused physics (m toggle)",True],
-                   "Transform": ["t", SelectType.player_select, "Transform selected player(s) (t toggle)",True],
-                   "Rotate": ["2", SelectType.player_select, "Rotate player(s) on click or select (2)",True]}
+    drawing = {"Dynamic Block": ["p", None, "Draw a block that reacts to physics (d toggle)", True],
 
-    drawing = {"Dynamic Block": ["p", None, "Draw a block that reacts to physics (d toggle)",True],
-
-               #"Fragment Poly": ["f", SelectType.draw, "Draw a fragmented polygon that reacts to physics (f toggle)"],
-               #"Frament Rectangle": ["f", SelectType.rectangle,
+               # "Fragment Poly": ["f", SelectType.draw, "Draw a fragmented polygon that reacts to physics (f toggle)"],
+               # "Frament Rectangle": ["f", SelectType.rectangle,
                #                      "Draw a fragmented rectangle that reacts to physics (f toggle)"],
 
-               "Static Block": ["g", None, "Draw a static floor polygon that reacts to physics (g toggle)",True],
-                }
+               "Static Block": ["g", None, "Draw a static floor polygon that reacts to physics (g toggle)", True],
+               }
 
-    updating = {"Config Update": ["5", SelectType.null, "Configure the board wide settings (5)",True],
-                "Background Update": ["6", SelectType.null, "Update the background (6)",True],
-                "Joint Update": ["4", SelectType.select, "Update connected joints to clicked player (4)",True],
-                "Player Update": [";", SelectType.select, "Update player (;)",True]}
+    updating = {"Config Update": ["5", SelectType.null, "Configure the board wide settings (5)", True],
+                "Background Update": ["6", SelectType.null, "Update the background (6)", True],
+                "Joint Update": ["4", SelectType.select, "Update connected joints to clicked player (4)", True],
+                "Player Update": [";", SelectType.select, "Update player (;)", True]}
 
-    sensors = {"Force": ["k", None,"Draw sensor that pushes colliding blocks in set direction (k toggle)",True],  # was pusher
-               "Impulse": ["/", None, "Draw sensor that fires blocks in set direction ( / toggle)",True],  #was fire
-               "Splitter": ["l", None, "Draw sensor that fragments colliding blocks (l toggle)",True],
-               "Goal": ["'", None, "Draw sensor that destroys blocks ('k' toggle)",True],
-               "Motor Switch": ["~", None, "Polygon draw of sensor that switches the direction of a motor ('k' toggle)",True],
-               "Sticky": ["%", None, "Polygon draw of lets objects stick into it ('k' toggle)",True],
-               "Enlarger": ["£", None, "Polygon draw of sensor that switches the direction of a motor ('k' toggle)",True],
-               "Shrinker ": ["$", None, "Draw sensor that switches the shrinks a block ('k' toggle)",True],
-               "Water": ["&", None, "Polygon draw of sensor that switches the direction of a motor ('k' toggle)",True],
-               "Low Gravity ": ["^", None, "Draw sensor that has low gravity ('k' toggle)",True],
-               "Gravity Switch": ["#", None, "Draw sensor that switches gravity ('k' toggle)",True]}
+    sensors = {"Force": ["k", None, "Draw sensor that pushes colliding blocks in set direction (k toggle)", True],
+               # was pusher
+               "Impulse": ["/", None, "Draw sensor that fires blocks in set direction ( / toggle)", True],  # was fire
+               "Splitter": ["l", None, "Draw sensor that fragments colliding blocks (l toggle)", True],
+               "Goal": ["'", None, "Draw sensor that destroys blocks ('k' toggle)", True],
+               "Motor Switch": ["~", None, "Draw sensor that switches the direction of a motor ('k' toggle)",
+                                True],
+               "Sticky": ["%", None, "Draw sensor that lets objects stick into it ('k' toggle)", True],
+               "Center": [")", None, "Draw sensor that centers object and returns on death ('k' toggle)", True],
+               "Enlarger": ["£", None, "Draw sensor that sensor that switches the direction of a motor ('k' toggle)",
+                            True],
+               "Shrinker ": ["$", None, "Draw sensor that switches the shrinks a block ('k' toggle)", True],
+               "Water": ["&", None, "Draw sensor that sensor that switches the direction of a motor ('k' toggle)", True],
+               "Low Gravity ": ["^", None, "Draw sensor that has low gravity ('k' toggle)", True],
+               "Gravity Switch": ["#", None, "Draw sensor that switches gravity ('k' toggle)", True]}
 
+    screen_drawing = {"Draw All": ["0", SelectType.null, "Toggle drawing of all blocks on ('0' toggle)", False],
+                      "Draw Set": ["0", SelectType.null, "Toggle drawing to only allocated objects ('0' toggle)",
+                                   False]}
 
-    screen_drawing = {"Draw All": ["0", SelectType.null, "Toggle drawing of all blocks on ('0' toggle)",False],
-                      "Draw Set": ["0", SelectType.null, "Toggle drawing to only allocated objects ('0' toggle)",False]}
-
-
-    joints = {"Merge Blocks": ["j", SelectType.player_select, "Merge two players together",True],
+    joints = {"Merge Blocks": ["j", SelectType.player_select, "Merge two players together", True],
 
               "Distance Joint": ["j", SelectType.straight_join,
-                                 "Create a joint that attempts to keep a set fixed distance between two players (j toggle)",True],
+                                 "Create a joint that attempts to keep a set fixed distance between two players (j toggle)",
+                                 True],
               "Rope Joint": ["j", SelectType.straight_join,
-                             "Create a joint that constrains two blocks to a maximum distance but can be less (j toggle)",True],
+                             "Create a joint that constrains two blocks to a maximum distance but can be less (j toggle)",
+                             True],
               "Prismatic Joint": ["j", SelectType.straight_join,
-                                  "Create a joint that restricts movement to a given axis (j toggle)",True],
+                                  "Create a joint that restricts movement to a given axis (j toggle)", True],
               "Electric": ["j", SelectType.line_join,
-                           "Create an electric appearing joint between two blocks (j toggle)",True],
+                           "Create an electric appearing joint between two blocks (j toggle)", True],
               "Chain": ["j", SelectType.line_join,
                         "Create a chain joint between two blocks (j toggle)"],
-              "Springy Rope": ["j", SelectType.line_join, "To Fix (j toggle)",True],
-              "Weld Joint": ["j", SelectType.straight_join, "Weld two blocks together (j toggle)",True],
-              "Wheel Joint": ["j", SelectType.circle, "Create a wheel type joint (j toggle)",True],
+              "Springy Rope": ["j", SelectType.line_join, "To Fix (j toggle)", True],
+              "Weld Joint": ["j", SelectType.straight_join, "Weld two blocks together (j toggle)", True],
+              "Wheel Joint": ["j", SelectType.circle, "Create a wheel type joint (j toggle)", True],
               "Rotation Joint": ["j", SelectType.rotation_select,
-                                 "Create a rotation joint between two blocks (j toggle)",True],
+                                 "Create a rotation joint between two blocks (j toggle)", True],
               "Pulley": ["j", SelectType.d_straight_join,
-                         "Create a pulley between two blocks and a static point (j toggle)",True]}
+                         "Create a pulley between two blocks and a static point (j toggle)", True]}
 
     layout = []
 
-    sections = [gameplay, updating, screen_drawing,translation, creation, draw_type, drawing,  sensors, joints]
-    section_names = ['Gameplay', 'Edit', 'Screen_drawing', 'Translation', 'Creation', "Draw Type", 'Drawing',  'Sensors',
+    sections = [gameplay, updating, screen_drawing, translation, creation, draw_type, drawing, sensors, joints]
+    section_names = ['Gameplay', 'Edit', 'Screen_drawing', 'Translation', 'Creation', "Draw Type", 'Drawing', 'Sensors',
                      'Joints']
 
     for section, name in zip(sections, section_names):
@@ -149,24 +158,26 @@ def get_toolbar():
         if sub_buttons != []:
             buttons.append(sub_buttons)
 
-        layout.append([sg.Frame(name, buttons, pad=(12, 8), element_justification="center",size=(200,200))])
+        layout.append([sg.Frame(name, buttons, pad=(12, 8), element_justification="center", size=(200, 200))])
 
     # drawing section
 
-    translation = {"Screen Move": ["1", SelectType.select, "Move the screen position with click drag (m toggle)",True],
+    translation = {"Screen Move": ["1", SelectType.select, "Move the screen position with click drag (m toggle)", True],
                    "Center Clicked": ["2", SelectType.select,
-                                      "Center the board on the selected item if nothing selected clears",True]}
-    player = {"Fire Bullet": ["]", SelectType.null, "Fire a bullet from the player center to mouse click position (])",True]}
+                                      "Center the board on the selected item if nothing selected clears", True]}
+    player = {
+        "Fire Bullet": ["]", SelectType.null, "Fire a bullet from the player center to mouse click position (])", True]}
 
-    motor = {"Motor Forwards": ["3", SelectType.select, "Move the screen position with click drag (m toggle)",True],
-             "Motor Backwards": ["4", SelectType.select, "Move the screen position with click drag (m toggle)",True]}
-    rotate = {"Rotate CCW": ["5", SelectType.select, "Move the screen position with click drag (m toggle)",True],
-              "Rotate CW": ["6", SelectType.select, "Move the screen position with click drag (m toggle)",True]}
-    impulse = {"Impulse": ["7", SelectType.select, "Move the screen position with click drag (m toggle)",True],
-               "Relative Impulse": ["8", SelectType.select, "Move the screen position with click drag (m toggle)",True]}
-    force = {"Force": ["9", SelectType.select, "Move the screen position with click drag (m toggle)",True],
-             "Relative Force": ["0", SelectType.select, "Move the screen position with click drag (m toggle)",True]}
-    keys = {"Change Keys": ["`", SelectType.select, "Get keys",True]}
+    motor = {"Motor Forwards": ["3", SelectType.select, "Move the screen position with click drag (m toggle)", True],
+             "Motor Backwards": ["4", SelectType.select, "Move the screen position with click drag (m toggle)", True]}
+    rotate = {"Rotate CCW": ["5", SelectType.select, "Move the screen position with click drag (m toggle)", True],
+              "Rotate CW": ["6", SelectType.select, "Move the screen position with click drag (m toggle)", True]}
+    impulse = {"Impulse": ["7", SelectType.select, "Move the screen position with click drag (m toggle)", True],
+               "Relative Impulse": ["8", SelectType.select, "Move the screen position with click drag (m toggle)",
+                                    True]}
+    force = {"Force": ["9", SelectType.select, "Move the screen position with click drag (m toggle)", True],
+             "Relative Force": ["0", SelectType.select, "Move the screen position with click drag (m toggle)", True]}
+    keys = {"Change Keys": ["`", SelectType.select, "Get keys", True]}
 
     sections = [translation, player, motor, rotate, impulse, force, keys]
 
@@ -187,7 +198,7 @@ def get_toolbar():
         if sub_buttons != []:
             buttons_2.append(sub_buttons)
 
-        layout_2.append([sg.Frame(name, buttons_2, pad=(12, 8), element_justification="center",size=(200,10))])
+        layout_2.append([sg.Frame(name, buttons_2, pad=(12, 8), element_justification="center", size=(200, 10))])
 
     layout = [[sg.TabGroup(
         [[sg.Tab('Drawing Mode', layout, key="create_tab"), sg.Tab('Movement Mode', layout_2, key="move_tab")]],
@@ -222,21 +233,25 @@ def get_keys_window(clicked, selected=0):
                 for key, val in action.items():
                     disabled = False
 
-                    if key in ["id", "type"]:
+                    if key in ["id", "type", "extra"]:
                         disabled = True
-                    elif not val in ["impulse", "relative impulse", "force", "relative force"] and key == "limit_speed":
+                    elif not action["type"] in ["impulse", "relative impulse", "force", "relative force"] and key in [
+                        "limit_speed", "cancel_velocity", "cancel_rotation"]:
+                        disabled = True
+                    elif action["type"] in ["motor", "rotate"] and key in ["limit_x", "limit_y"]:
                         disabled = True
 
                     if type(val) is bool:
                         other_layout.append(
-                            [sg.Text(key.replace("_", " ")), sg.Checkbox(text="On?", default=val, key=key,disabled =disabled )])
+                            [sg.Text(key.replace("_", " ")),
+                             sg.Checkbox(text="On?", default=val, key=key, disabled=disabled)])
 
                     elif type(val) == b2Vec2:
                         pass
                     elif type(val) is tuple:
                         val = list(val)
-                        val[0] = round(val[0], 3)
-                        val[1] = round(val[1], 3)
+                        val[0] = round(val[0], 4)
+                        val[1] = round(val[1], 4)
                         other_layout.append(
                             [sg.Text(key.replace("_", " ")), sg.InputText(str(val), key=key, disabled=disabled)])
                     else:
@@ -257,7 +272,6 @@ def get_clicked_keys_gui(clicked):
     pos = None
     window, action_items = get_keys_window(clicked, 0)
     if window is None:
-        window.close()
         return
 
     while True:
@@ -275,7 +289,6 @@ def get_clicked_keys_gui(clicked):
                             window.close()
                             window, action_items = get_keys_window(clicked, 0)
                             if window is None:
-                                window.close()
                                 return
 
         elif event == "listbox":
@@ -304,7 +317,21 @@ def get_clicked_keys_gui(clicked):
                                         try:
                                             clicked.keys[k][i][valk] = float(valv)
                                         except:
-                                            clicked.keys[k][i][valk] = valv
+                                            if "{" in valv:
+                                                clicked.keys[k][i][valk] = ast.literal_eval(valv)
+                                            else:
+                                                clicked.keys[k][i][valk] = valv
+                                if valk == "hold_motor_in_place" and valv is True:
+                                    joint = \
+                                    [jn.joint for jn in clicked.body.joints if jn.joint.userData["id"] == values["id"]][
+                                        0]
+                                    joint.limitEnabled = True
+                                # if valk == "hold_motor_in_place" and valv is False:
+                                #     joint = \
+                                #     [jn.joint for jn in clicked.body.joints if jn.joint.userData["id"] == values["id"]][
+                                #         0]
+                                #     if joint.limitEnabled is True:
+                                #     joint.limitEnabled = False
             sg.popup("Block updated")
 
         elif event == "exit":
@@ -315,7 +342,7 @@ def get_clicked_keys_gui(clicked):
 def enable_all(toolbar):
     for k, v in toolbar.AllKeysDict.items():
         if type(v) is sg.Button:
-            if not k in ["Polygon","Rectangle","Circle"]:
+            if not k in ["Polygon", "Rectangle", "Circle"]:
                 v.update(disabled=False)
     return toolbar
 
@@ -325,13 +352,11 @@ def deal_with_toolbar_event(toolbar, cur_key, cur_key_type, draw, msg):
     event, values = toolbar.read(1)
     key = None
 
-    for i,ty in enumerate(["Polygon","Rectangle","Circle"]):
+    for i, ty in enumerate(["Polygon", "Rectangle", "Circle"]):
         if draw.draw_type == i:
             toolbar[ty].update(disabled=True)
         else:
             toolbar[ty].update(disabled=False)
-
-
 
     if event == "expand":
         toolbar["options"].Update(visible=not toolbar["options"].Visible)
@@ -350,13 +375,13 @@ def deal_with_toolbar_event(toolbar, cur_key, cur_key_type, draw, msg):
 
     elif event != "__TIMEOUT__":
 
-        if event in ["Polygon","Rectangle","Circle"]:
-            draw.set_draw_type(["Polygon","Rectangle","Circle"].index(event))
+        if event in ["Polygon", "Rectangle", "Circle"]:
+            draw.set_draw_type(["Polygon", "Rectangle", "Circle"].index(event))
         else:
             toolbar = enable_all(toolbar)
             data = toolbar[event].metadata
 
-            toolbar[event].update(disabled= toolbar[event].metadata[3])
+            toolbar[event].update(disabled=toolbar[event].metadata[3])
 
             draw.reset()
             msg.set_message(event)
@@ -505,7 +530,11 @@ def update_blocks_joint(values, block, joint_index, window):
 
             except AttributeError:
                 sg.Popup(f"Unable to set '{k}'")
-
+            joint.userData["old_lower_upper"] = joint.limits
+            if "Rotation" in str(type(joint)):
+                joint.userData["current_position"] = joint.angle
+            elif "Prismatic" in str(type(joint)):
+                joint.userData["current_position"] = joint.translation
     return block
 
 
@@ -644,8 +673,8 @@ def load_gui(timer=None, phys=None, draw=None, board=None, msg=None, persistant=
             if values["files"][0] != "":
                 timer, phys, draw, board, msg, blurb = load_state(values["files"][0])
                 msg.set_message("State Loaded")
-                #draw.reset()
-                if not blurb is None and blurb.replace("\n","") != "":
+                # draw.reset()
+                if not blurb is None and blurb.replace("\n", "") != "":
                     sg.popup(blurb)
                 break
             else:
@@ -667,7 +696,6 @@ def load_gui(timer=None, phys=None, draw=None, board=None, msg=None, persistant=
             window["blurb"].update(load_state(values["files"])[5])
 
     window.close()
-
 
     return timer, phys, draw, board, msg
 
@@ -847,7 +875,8 @@ def update_block_values(values, block):
                             block.sensor["options"][k] = float(v)
                         except:
                             if v.find("[") > -1:
-                                block.sensor["options"][k] = tuple([float(val.replace("(","").replace(")","")) for val in '(232.2,23.4)'.split(",")])
+                                block.sensor["options"][k] = tuple(
+                                    [float(val.replace("(", "").replace(")", "")) for val in '(232.2,23.4)'.split(",")])
                             else:
                                 block.sensor["options"][k] = v
 
@@ -881,47 +910,49 @@ def update_block(block):
     else:
         drawLayer = 3
 
-    base_layout = [[sg.Text("ID: "),sg.InputText(block.id,disabled=True,key="id")],
-              [sg.Checkbox(text="Is Awake?", key="awake", default=block.body.awake)],
-              [sg.Checkbox(text="Is Active?", key="active", default=block.body.active)],
-              [sg.Checkbox(text="Has fixed rotation?", key="fixedRotation", default=block.body.fixedRotation)],
-              [sg.Checkbox(text="Is colidable?", key="sensor", default=block.body.fixtures[0].sensor)],
-              [sg.Checkbox(text="Draw on?", key="force_draw", default=block.force_draw)],
-              [sg.Checkbox(text="is Player?", key="is_player", default=block.is_player)],
-              [sg.Text("Linear Damping"), sg.InputText(round(block.body.linearDamping, 3), key="linearDamping")],
-              [sg.Text("angularDamping"), sg.InputText(round(block.body.angularDamping, 3), key="angularDamping")],
-              [sg.Text("gravityScale"), sg.InputText(round(block.body.gravityScale, 3), key="gravityScale")],
-              [sg.Text("angle"), sg.InputText(round(block.body.angle, 4), key="angle")],
-              [sg.Text("mass"), sg.InputText(round(block.body.mass, 4), key="mass")],
-              [sg.Text("density"), sg.InputText(round(block.body.fixtures[0].density, 3), key="density")],
-              [sg.Text("friction"), sg.InputText(round(block.body.fixtures[0].friction, 3), key="friction")],
-              [sg.Text("restitution"),
-               sg.InputText(round(block.body.fixtures[0].restitution, 3), key="restitution")],
-              [sg.ColorChooserButton(button_text="Choose Colour", key="colour")],
-              [sg.Radio('Block', "RADIO1", default=True if drawLayer == 3 else False, key="normal"), sg.Radio('Foreground', "RADIO1", default=True if drawLayer == 1 else False , key="foreground"), sg.Radio('Background', "RADIO1", default=True if drawLayer == 2 else False , key="background")],
-              [sg.Text("Choose Sprite"), sg.FileBrowse(key="sprite")]
-              ]
+    base_layout = [[sg.Text("ID: "), sg.InputText(block.id, disabled=True, key="id")],
+                   [sg.Checkbox(text="Is Awake?", key="awake", default=block.body.awake)],
+                   [sg.Checkbox(text="Is Active?", key="active", default=block.body.active)],
+                   [sg.Checkbox(text="Has fixed rotation?", key="fixedRotation", default=block.body.fixedRotation)],
+                   [sg.Checkbox(text="Is colidable?", key="sensor", default=block.body.fixtures[0].sensor)],
+                   [sg.Checkbox(text="Draw on?", key="force_draw", default=block.force_draw)],
+                   [sg.Checkbox(text="is Player?", key="is_player", default=block.is_player)],
+                   [sg.Text("Linear Damping"), sg.InputText(round(block.body.linearDamping, 3), key="linearDamping")],
+                   [sg.Text("angularDamping"), sg.InputText(round(block.body.angularDamping, 3), key="angularDamping")],
+                   [sg.Text("gravityScale"), sg.InputText(round(block.body.gravityScale, 3), key="gravityScale")],
+                   [sg.Text("angle"), sg.InputText(round(block.body.angle, 4), key="angle")],
+                   [sg.Text("mass"), sg.InputText(round(block.body.mass, 4), key="mass")],
+                   [sg.Text("density"), sg.InputText(round(block.body.fixtures[0].density, 3), key="density")],
+                   [sg.Text("friction"), sg.InputText(round(block.body.fixtures[0].friction, 3), key="friction")],
+                   [sg.Text("restitution"),
+                    sg.InputText(round(block.body.fixtures[0].restitution, 3), key="restitution")],
+                   [sg.ColorChooserButton(button_text="Choose Colour", key="colour")],
+                   [sg.Radio('Block', "RADIO1", default=True if drawLayer == 3 else False, key="normal"),
+                    sg.Radio('Foreground', "RADIO1", default=True if drawLayer == 1 else False, key="foreground"),
+                    sg.Radio('Background', "RADIO1", default=True if drawLayer == 2 else False, key="background")],
+                   [sg.Text("Choose Sprite"), sg.FileBrowse(key="sprite")]
+                   ]
 
     sensor_layout = []
 
     if "options" in block.sensor.keys():
         sensor_layout.append([sg.Text("SENSOR OPTIONS:")])
-        for k,v in block.sensor["options"].items():
+        for k, v in block.sensor["options"].items():
             if type(v) is bool:
-                sensor_layout.append([sg.Text(k.replace("_"," ")),sg.Checkbox(text="",default=v,key=k)])
+                sensor_layout.append([sg.Text(k.replace("_", " ")), sg.Checkbox(text="", default=v, key=k)])
             else:
                 if type(v) == tuple:
                     v = list(v)
-                    v[0] = round(v[0],4)
-                    v[1] = round(v[1],4)
+                    v[0] = round(v[0], 4)
+                    v[1] = round(v[1], 4)
 
                 sensor_layout.append([sg.Text(k.replace("_", " ")), sg.InputText(str(v), key=k)])
 
-    layout= [[sg.Frame('Block Options',base_layout)],
-            [sg.Frame('Sensor Options',sensor_layout)]]
+    layout = [[sg.Frame('Block Options', base_layout)],
+              [sg.Frame('Sensor Options', sensor_layout)]]
 
     layout = [[sg.Column(layout)],
-              [sg.OK(button_text="Save",key="Save")]]
+              [sg.OK(button_text="Save", key="Save")]]
 
     # Display the window and get values
     window = sg.Window('Block Settings', layout)
@@ -937,10 +968,12 @@ def update_block(block):
             if event == "Save":
                 block = update_block_values(values, block)
                 break
+
         except TypeError:
             # user closed window unexpectedly
             pass
-
+        if event == sg.WIN_CLOSED:
+            break
     window.close()
     return block
 
@@ -949,8 +982,9 @@ def update_background(board, phys, msg):
     # load update background GUI
 
     resizetype = [
-        sg.Frame('Background Method', layout=[[sg.Radio('Resize images to board size', "RADIO1", default=True, key="toboard")],
-             [sg.Radio('Resize board to image size', "RADIO1", key="toimage")]])]
+        sg.Frame('Background Method',
+                 layout=[[sg.Radio('Resize images to board size', "RADIO1", default=True, key="toboard")],
+                         [sg.Radio('Resize board to image size', "RADIO1", key="toimage")]])]
 
     background = [
         sg.Frame('Choose Background', layout=[[sg.Text("Backgrounds are displayed behind ALL other elements")],
@@ -993,7 +1027,7 @@ def update_background(board, phys, msg):
     #           [sg.OK(button_text="Save")]
     #           ]
 
-    layout = [[sg.Column([resizetype,background, foreground, middleground])],
+    layout = [[sg.Column([resizetype, background, foreground, middleground])],
               [sg.Ok("Load")]]
 
     # Display the window and get values
@@ -1034,7 +1068,7 @@ def update_background(board, phys, msg):
 
             fore_img = cv2.imread(values["foreground"], -1)
             if values["toboard"]:
-                fore_img = cv2.resize(fore_img,(board.board.shape[1],board.board.shape[0]))
+                fore_img = cv2.resize(fore_img, (board.board.shape[1], board.board.shape[0]))
 
             if not type(fore_img) is type(None):
                 if fore_img.shape[2] > 3:
@@ -1064,7 +1098,7 @@ def update_background(board, phys, msg):
 
             back_img = cv2.imread(values["background"])
             if values["toboard"]:
-                back_img = cv2.resize(back_img,(board.board.shape[1],board.board.shape[0]))
+                back_img = cv2.resize(back_img, (board.board.shape[1], board.board.shape[0]))
 
             if not type(back_img) is type(None):
                 window["background"].metadata = {"status": "ok", "size": back_img.shape}
@@ -1080,7 +1114,7 @@ def update_background(board, phys, msg):
             mid_img = cv2.imread(values["middleground"])
 
             if values["toboard"]:
-                mid_img = cv2.resize(mid_img,(board.board.shape[1],board.board.shape[0]))
+                mid_img = cv2.resize(mid_img, (board.board.shape[1], board.board.shape[0]))
 
             if not type(mid_img) is type(None):
                 window["middleground"].metadata = {"status": "ok", "size": mid_img.shape}

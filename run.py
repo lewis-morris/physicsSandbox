@@ -119,6 +119,14 @@ def add(event, x, y, flags, param):
         cur_key = cur_key[0] + str(draw.draw_type)
         draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="goal")
 
+    elif cur_key[0] == ")" and cur_key_type == 0:
+        """
+        Used to create Center sensors
+        """
+        cur_key = cur_key[0] + str(draw.draw_type)
+        draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="center")
+
+
     elif cur_key[0] == "^" and cur_key_type == 0:
         """
         Used to create Gravity sensors
@@ -204,7 +212,11 @@ def add(event, x, y, flags, param):
             phys.options["blocks_out"]["start_pos_x_max"] = int(x_new / w * 100)
             phys.options["blocks_out"]["start_pos_y_min"] = int(y_new / h * 100)
             phys.options["blocks_out"]["start_pos_y_max"] = int(y_new / h * 100)
-
+            config["blocks_out"]["start_pos_x_min"] = int(x_new / w * 100)
+            config["blocks_out"]["start_pos_x_max"] = int(x_new / w * 100)
+            config["blocks_out"]["start_pos_y_min"] = int(y_new / h * 100)
+            config["blocks_out"]["start_pos_y_max"] = int(y_new / h * 100)
+            config.write()
 
     elif cur_key[0] == "t" and cur_key_type == 0:
         """
@@ -317,7 +329,7 @@ def add(event, x, y, flags, param):
         """
         Used to attach a motor spin forwards
         """
-        draw, phys = attach_motor_spin(draw, phys, event, x_new, y_new, cur_key, board)
+        draw, phys = attach_motor_spin(draw, phys, event, x_new, y_new, cur_key, board,clockwise=False)
 
     elif cur_key[0] == "4" and cur_key_type == 1:
         """
@@ -415,7 +427,8 @@ if __name__ == "__main__":
         toolbar, key, name, cur_key_type, draw, msg, force  = deal_with_toolbar_event(toolbar, cur_key, cur_key_type, draw, msg)
 
         # move to snap to board
-        toolbar.move(cv2.getWindowImageRect("Board")[0] + board.board.shape[1], cv2.getWindowImageRect("Board")[1] - 53)
+        if loops % 10 == 0:
+            toolbar.move(cv2.getWindowImageRect("Board")[0] + board.board.shape[1], cv2.getWindowImageRect("Board")[1] - 53)
 
         # get key press
         if key is None:
@@ -445,6 +458,7 @@ if __name__ == "__main__":
 
         # show board
         cv2.imshow("Board", board.board_copy[:, :, ::-1])
+
 
         # timer log - this handles FPS
         timer.log()
