@@ -27,6 +27,7 @@ class SelectType(Enum):
     bullet_direction = "17"
     null = "-1"
     line_join2 = "18"
+    select_or_click = "19"
 #
 # def rotation(draw,phys,event,x,y,type):
 #     if type[1:] == SelectType.line_join.value:

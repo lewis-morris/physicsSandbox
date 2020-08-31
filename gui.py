@@ -10,7 +10,7 @@ from configobj import ConfigObj
 import numpy as np
 
 from draw_functions import SelectType
-from functions import get_config, convert_from_mks, convert_to_mks
+from functions import get_config, convert_from_mks, convert_to_mks, get_centroid
 
 from objects import load_state, load
 
@@ -65,7 +65,7 @@ def get_toolbar():
                  "Circle": ["Circle", None, "Select draw type as Circle", True]}
 
     creation = {"Spawn": ["z", None, "Spawn a player from the predefined spawn point (z)", False],
-                "Set Spawn": ["v", SelectType.null, "Set spawn point on click (v)", True],
+                "Set Spawn": ["v", SelectType.select_or_click, "Set spawn point on click (v)", True],
                 "Remove Blocks": ["e", SelectType.null, "Remove all dynamic blocks from scene (e)", True],
                 "Frag All": ["h", SelectType.null, "Fragment all blocks (h)", False],
                 "Delete": ["x", SelectType.select, "Delete a player with mouse - click or select (x)", True],
@@ -79,6 +79,7 @@ def get_toolbar():
 
     translation = {"Mouse Move": ["m", SelectType.select, "Move selected player with physics (m toggle)", True],
                    "Normal Move": ["m", SelectType.null, "Move selected player(s) paused physics (m toggle)", True],
+                   "Joint Move": ["m", SelectType.null, "Move selected player(s) along with joints (m toggle)", True],
                    "Clone Move": ["m", SelectType.null, "Clone selected player(s) paused physics (m toggle)", True],
                    "Transform": ["t", SelectType.player_select, "Transform selected player(s) (t toggle)", True],
                    "Rotate": ["2", SelectType.player_select, "Rotate player(s) on click or select (2)", True]}
@@ -117,7 +118,7 @@ def get_toolbar():
                       "Draw Set": ["0", SelectType.null, "Toggle drawing to only allocated objects ('0' toggle)",
                                    False]}
 
-    joints = {"Merge Blocks": ["j", SelectType.player_select, "Merge two players together", True],
+    joints = {"Merge Blocks": ["j", SelectType.select, "Merge two players together", True],
 
               "Distance Joint": ["j", SelectType.straight_join,
                                  "Create a joint that attempts to keep a set fixed distance between two players (j toggle)",
@@ -130,7 +131,7 @@ def get_toolbar():
               "Electric": ["j", SelectType.line_join,
                            "Create an electric appearing joint between two blocks (j toggle)", True],
               "Chain": ["j", SelectType.line_join,
-                        "Create a chain joint between two blocks (j toggle)"],
+                        "Create a chain joint between two blocks (j toggle)",True],
               "Springy Rope": ["j", SelectType.line_join, "To Fix (j toggle)", True],
               "Weld Joint": ["j", SelectType.straight_join, "Weld two blocks together (j toggle)", True],
               "Wheel Joint": ["j", SelectType.circle, "Create a wheel type joint (j toggle)", True],
@@ -162,7 +163,8 @@ def get_toolbar():
 
     # drawing section
 
-    translation = {"Screen Move": ["1", SelectType.select, "Move the screen position with click drag (m toggle)", True],
+    translation = {"Center Screen": ["!", SelectType.null, "Move the screen to center (! toggle)", True],
+                   "Screen Move": ["1", SelectType.select, "Move the screen position with click drag (m toggle)", True],
                    "Center Clicked": ["2", SelectType.select,
                                       "Center the board on the selected item if nothing selected clears", True]}
     player = {
@@ -280,11 +282,12 @@ def get_clicked_keys_gui(clicked):
         if event == "delete":
             items = [val.strip() for val in values["listbox"][0].split(":")]
             key = items[0]
+            ty = items[1]
             id = items[2]
             for k, v in clicked.keys.items():
                 if k == key:
                     for action in v:
-                        if action["id"] == id:
+                        if (action["id"] == id and action["type"] == "rotate") or (key == k and action["type"] == ty):
                             del clicked.keys[k][clicked.keys[k].index(action)]
                             window.close()
                             window, action_items = get_keys_window(clicked, 0)
@@ -326,14 +329,26 @@ def get_clicked_keys_gui(clicked):
                                     [jn.joint for jn in clicked.body.joints if jn.joint.userData["id"] == values["id"]][
                                         0]
                                     joint.limitEnabled = True
+                                    if hasattr(joint,"translation"):
+                                        lower = joint.translation
+                                    else:
+                                        lower = joint.angle
+
+                                    upper = lower + 0.02
+                                    joint.SetLimits(lower, upper)
                                 # if valk == "hold_motor_in_place" and valv is False:
                                 #     joint = \
                                 #     [jn.joint for jn in clicked.body.joints if jn.joint.userData["id"] == values["id"]][
                                 #         0]
                                 #     if joint.limitEnabled is True:
                                 #     joint.limitEnabled = False
-            sg.popup("Block updated")
+                            sg.popup("Block updated")
+                        else:
+                            sg.popup("Error saving block")
 
+        elif event == sg.WIN_CLOSED:
+            window.close()
+            break
         elif event == "exit":
             window.close()
             return
@@ -767,6 +782,7 @@ def load_options():
                 inner = []
                 options_found = False
                 for key, val in vv.items():
+                    input_type = None
                     if key.find("type") > -1:
                         input_type = key[-1]
                         options_found = True
@@ -830,7 +846,6 @@ def load_options():
                     except:
                         sg.Popup(f"Unexpected data type - clearing value")
                         window[k].update("")
-                        window[k].focus()
                         found += 1
             if found == 0:
                 update_config(values, window=window)
@@ -845,16 +860,30 @@ def load_options():
 
 
 def update_block_values(values, block):
+
+
+    #store the old translations peed
+    old_trans = block.translation_speed
+
     # update the block attributes
     for k, v in values.items():
+
         if v != "":
+            if k in ["active"]:
+                block.active = v
+
             if not type(v) is bool:
                 try:
                     v = float(v)
                 except:
                     pass
             if k == "colour":
-                v = tuple(int(values["colour"].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+                try:
+                    v = tuple(int(values["colour"].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+                except ValueError:
+                    #happens when user clicks colour button then doesnt fill out colour
+                    pass
+
             if hasattr(block, k):
                 if k != "sensor":
                     setattr(block, k, v)
@@ -874,20 +903,40 @@ def update_block_values(values, block):
                         try:
                             block.sensor["options"][k] = float(v)
                         except:
-                            if v.find("[") > -1:
-                                block.sensor["options"][k] = tuple(
-                                    [float(val.replace("(", "").replace(")", "")) for val in '(232.2,23.4)'.split(",")])
+                            if "[" in v:
+                                if "," in v:
+                                    block.sensor["options"][k] = [float(v) for v in [val.replace("[","").replace("]","").strip() for val in v.split(",")] if v != ""]
+                                elif " " in v:
+                                    block.sensor["options"][k] = [float(v) for v in [val.replace("[","").replace("]","").strip() for val in v.split(" ")] if v != ""]
                             else:
                                 block.sensor["options"][k] = v
 
                         if k == "density":
                             block.body.fixtures[0].density = float(v)
                             block.set_mass()
-
-    poly = block.get_poly(4)
+            #update sollision filter
+            for i, fix in enumerate(block.body.fixtures):
+                fix.filterData.groupIndex = int(values["groupIndex"])
+    #poly = block.get_poly(4)
 
     block.set_mass()
 
+    #makes translated blocks stay put when you change the translation
+    if values["translation_speed"] != 1:
+        position = convert_from_mks(block.body.position[0],block.body.position[1])
+
+        pos = np.array(block.center + (block.board.translation * block.translation_speed))
+        new_pos = np.array(block.center + (block.board.translation * float(values["translation_speed"])))
+
+        pos_diff = pos - new_pos
+
+        mks_diff = convert_to_mks(pos_diff[0],pos_diff[1])
+
+
+        block.body.position = block.body.position + b2Vec2(mks_diff[0],mks_diff[1])
+        block.get_current_pos(force=True)
+
+    #used for setting the background etc
     if values["normal"]:
         block.background = False
         block.forground = False
@@ -914,7 +963,8 @@ def update_block(block):
                    [sg.Checkbox(text="Is Awake?", key="awake", default=block.body.awake)],
                    [sg.Checkbox(text="Is Active?", key="active", default=block.body.active)],
                    [sg.Checkbox(text="Has fixed rotation?", key="fixedRotation", default=block.body.fixedRotation)],
-                   [sg.Checkbox(text="Is colidable?", key="sensor", default=block.body.fixtures[0].sensor)],
+                   [sg.Checkbox(text="Is Sensor?", key="sensor", default=block.body.fixtures[0].sensor)],
+                   [sg.Checkbox(text="Is Bullet?", key="bullet", default=False)],
                    [sg.Checkbox(text="Draw on?", key="force_draw", default=block.force_draw)],
                    [sg.Checkbox(text="is Player?", key="is_player", default=block.is_player)],
                    [sg.Text("Linear Damping"), sg.InputText(round(block.body.linearDamping, 3), key="linearDamping")],
@@ -926,11 +976,16 @@ def update_block(block):
                    [sg.Text("friction"), sg.InputText(round(block.body.fixtures[0].friction, 3), key="friction")],
                    [sg.Text("restitution"),
                     sg.InputText(round(block.body.fixtures[0].restitution, 3), key="restitution")],
+                   [sg.Text("Collision Filter Group"),
+                    sg.InputText(round(block.body.fixtures[0].filterData.groupIndex, 3), key="groupIndex")],
                    [sg.ColorChooserButton(button_text="Choose Colour", key="colour")],
                    [sg.Radio('Block', "RADIO1", default=True if drawLayer == 3 else False, key="normal"),
                     sg.Radio('Foreground', "RADIO1", default=True if drawLayer == 1 else False, key="foreground"),
                     sg.Radio('Background', "RADIO1", default=True if drawLayer == 2 else False, key="background")],
-                   [sg.Text("Choose Sprite"), sg.FileBrowse(key="sprite")]
+                   [sg.Text("Draw order"), sg.InputText(block.draw_position, key="draw_position")],
+                   [sg.Text("Choose Sprite"), sg.FileBrowse(key="sprite")],
+                   [sg.Text("Translation Speed"),
+                    sg.InputText(block.translation_speed, key="translation_speed")],
                    ]
 
     sensor_layout = []
@@ -1068,7 +1123,7 @@ def update_background(board, phys, msg):
 
             fore_img = cv2.imread(values["foreground"], -1)
             if values["toboard"]:
-                fore_img = cv2.resize(fore_img, (board.board.shape[1], board.board.shape[0]))
+                fore_img = cv2.resize(fore_img, (board.board.shape[1], board.board.shape[0]),interpolation=cv2.INTER_LANCZOS4)
 
             if not type(fore_img) is type(None):
                 if fore_img.shape[2] > 3:
@@ -1098,7 +1153,7 @@ def update_background(board, phys, msg):
 
             back_img = cv2.imread(values["background"])
             if values["toboard"]:
-                back_img = cv2.resize(back_img, (board.board.shape[1], board.board.shape[0]))
+                back_img = cv2.resize(back_img, (board.board.shape[1], board.board.shape[0]),interpolation=cv2.INTER_LANCZOS4)
 
             if not type(back_img) is type(None):
                 window["background"].metadata = {"status": "ok", "size": back_img.shape}
@@ -1114,7 +1169,7 @@ def update_background(board, phys, msg):
             mid_img = cv2.imread(values["middleground"])
 
             if values["toboard"]:
-                mid_img = cv2.resize(mid_img, (board.board.shape[1], board.board.shape[0]))
+                mid_img = cv2.resize(mid_img, (board.board.shape[1], board.board.shape[0]),interpolation=cv2.INTER_LANCZOS4)
 
             if not type(mid_img) is type(None):
                 window["middleground"].metadata = {"status": "ok", "size": mid_img.shape}
@@ -1168,7 +1223,7 @@ def get_select_joints_with_motor(clicked):
         if len(items) > 0:
             layout.append([sg.Listbox(values=(items), size=(30, 3), key="listbox", enable_events=True)])
 
-            window = sg.Window('Background Settings', layout)
+            window = sg.Window('Attach Keys', layout)
             while True:
                 event, values = window.read(1)
 

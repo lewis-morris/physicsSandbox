@@ -129,7 +129,7 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
     elif key == ord("m") and cur_key_type == 0:
         # Mouse Move
         draw.reset()
-        options = {"Mouse Move": SelectType.select, "Normal Move": SelectType.null, "Clone Move": SelectType.null}
+        options = {"Mouse Move": SelectType.select, "Normal Move": SelectType.null,"Joint Move": SelectType.null, "Clone Move": SelectType.null}
         cur_key = msg.auto_set(options, key, force)
 
     elif key == ord("t") and cur_key_type == 0:
@@ -140,10 +140,11 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
 
     elif key == ord("e") and cur_key_type == 0:
         # draw ropes
-        draw.reset()
-        phys.kill_all(static=False)
-        msg.set_message("Remove Blocks")
-        cur_key = "e"
+        if sg.popup_yes_no("Are you sure you want to kill all blocks?") == "Yes":
+            draw.reset()
+            phys.kill_all(static=False)
+            msg.set_message("Remove Blocks")
+            cur_key = "e"
 
     elif key == ord("v") and cur_key_type == 0:
         # draw ropes
@@ -283,7 +284,7 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
     elif key == ord("j") and cur_key_type == 0:
         # draw joints
         draw.reset()
-        options = {"Merge Blocks": SelectType.player_select,
+        options = {"Merge Blocks": SelectType.select,
                    "Distance Joint": SelectType.straight_join, "Rope Joint": SelectType.straight_join,
                    "Prismatic Joint":SelectType.straight_join,
                    "Electric": SelectType.line_join, "Springy Rope": SelectType.line_join,
@@ -397,6 +398,12 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
         draw.reset()
         options = {"Relative Impulse": SelectType.vector_direction}
         cur_key = msg.auto_set(options, key, force)
+
+    elif key == ord("!") and cur_key_type == 1:
+        """
+        Used to attach an relative impulse to a block
+        """
+        board.translation = np.array([0, 0])
 
     #do move keypresses:
     if cur_key_type == 1:
@@ -610,10 +617,10 @@ def draw_sensor(draw, phys, event, x, y, type, ty):
         draw.stage += 1
 
         draw.locations = []
-        poly = block.get_poly()
-        cenX = int(poly.centroid.x)
-        cenY = int(poly.centroid.y)
-        draw.log_point(cenX, cenY, "fire")
+        # poly = block.get_poly()
+        # cenX = int(poly.centroid.x)
+        # cenY = int(poly.centroid.y)
+        draw.log_point(block.centroid[0]-draw.board.translation[0], block.centroid[1]-draw.board.translation[1], "fire")
 
 
         if ty in ["shrinker","center", "enlarger","gravity","splitter","lowgravity","goal","water","sticky","motorsw"]:
@@ -652,21 +659,38 @@ def pulley(draw, phys, event, x, y, type):
 
 
 def merge_blocks(draw, phys, event, x, y, type):
-    if type[1:] == SelectType.player_select.value:
-        draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
-                                                      allow_clicked=False, log_clicked=False,
-                                                      allow_multiple=True)
 
-        if ans == True:
+    if type[1:] == SelectType.select.value:
+        draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type, True)
+        if ans is True:
+            coors = list(get_poly_from_two_rectangle_points(draw.locations[0], draw.locations[-1]).exterior.coords)
+            selected = get_all_in_poly(phys, coors)
+            if not selected == []:
+                phys.merge_blocks(selected)
+                draw.reset()
+            else:
+                draw.reset()
+        elif ans is False:
+
+            pass
+        else:
             if len(draw.player_list) == 2:
                 phys.merge_blocks(draw.player_list)
                 draw.reset()
-            else:
-                coors = list(get_poly_from_two_rectangle_points(draw.locations[0], draw.locations[-1]).exterior.coords)
-                selected = get_all_in_poly(phys, coors)
-                if not selected is False:
-                    phys.merge_blocks(selected)
-                    draw.reset()
+
+    # if type[1:] == SelectType.player_select.value:
+    #     draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
+    #                                                   allow_clicked=True, log_clicked=True,
+    #                                                   allow_multiple=True)
+    #     if len(set(draw.player_list)) == 2:
+    #         phys.merge_blocks(draw.player_list)
+    #         draw.reset()
+    #     elif ans == True:
+    #         coors = list(get_poly_from_two_rectangle_points(draw.locations[0],draw.locations[-1]).exterior.coords)
+    #         selected = get_all_in_poly(phys, coors)
+    #         if not selected is False or not selected == []:
+    #             phys.merge_blocks(selected)
+    #             draw.reset()
     return draw, phys
 
 
@@ -734,7 +758,7 @@ def attach_motor_spin(draw, phys, event, x, y, type, board=None, clockwise=True)
             if not joint is None:
                 key = get_key_gui()
                 joint_id = clicked.body.joints[int(joint.split("-")[0])].joint.userData["id"]
-                dir = "motor forwards" if clockwise else "motor backwards"
+                dir = "motor backwards" if clockwise else "motor forwards"
                 clicked.add_move(key, dir, joint_id, joint_id)
             draw.reset()
 
@@ -752,6 +776,7 @@ def add_force(draw, phys, event, x, y, type, board=None, relative = False):
                 for bl in draw.player_list:
                     key = get_key_gui()
                     bl.add_move(key, "relative force" if relative else "force",draw.vector)
+
                     draw.reset()
 
     return draw, phys
@@ -779,7 +804,7 @@ def fire(draw, phys, event, x, y, type, board=None):
 
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
                                                       allow_clicked=True, log_clicked=True,
-                                                      allow_multiple=False, board= board)
+                                                      allow_multiple=False, board= board,blocks_only=True)
         if ans == True:
             if len(draw.player_list) > 0:
                 try:
@@ -802,7 +827,7 @@ def fire(draw, phys, event, x, y, type, board=None):
 
         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
                                                       allow_clicked=True, log_clicked=True,
-                                                      allow_multiple=False)
+                                                      allow_multiple=False,blocks_only=True)
         if ans == True:
             phys.create_block(pos=draw.locations[0])
             draw.reset()
@@ -824,6 +849,20 @@ def select_blocks(draw, phys, event, x, y, type, board=None):
                     print(bl)
             draw.reset()
     return draw, phys
+
+def get_spawn(draw, phys, event, x, y, type, board=None):
+    if event == cv2.EVENT_LBUTTONDOWN:
+        draw.log_point(x, y, "rectangle_draw")
+
+    elif event == cv2.EVENT_MOUSEMOVE:
+        if draw.status == "rectangle_draw":
+            draw.log_point(x, y, "rectangle_draw")
+
+    elif event == cv2.EVENT_LBUTTONUP:
+        draw.log_point(x, y, "rectangle_draw")
+        return draw, phys, True, list(get_poly_from_two_rectangle_points(draw.locations[0], draw.locations[-1]).exterior.coords)
+
+    return draw, phys, False , None
 
 
 def wheel_draw(draw, phys, event, x, y, type, board=None):
@@ -990,7 +1029,8 @@ def create_terrain(draw,phys,board):
     #phys.create_block(poly_type=5,shape=coords)
 
     phys.fractal_create(coords, terrain=True)
-    phys.merge_blocks(is_terrain=True)
+
+    #phys.merge_blocks(is_terrain=True)
 
     col = [1, 92, 40]
     for bl in phys.block_list:
@@ -1144,11 +1184,11 @@ def draw_shape(draw, phys, event, x, y, type, board=None):
 
 
 def player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=True, log_clicked=False,
-                                insist_clicked=False, allow_multiple=True, board=None):
+                                insist_clicked=False, allow_multiple=True, board=None, blocks_only=False):
     # get player if clicked
     clicked = None
     if allow_clicked and event == cv2.EVENT_LBUTTONDOWN:
-        clicked, coords = get_clicked(phys.block_list, x, y, board)
+        clicked, coords = get_clicked(phys.block_list, x, y, board,blocks_only=blocks_only)
         if not clicked is None:
             if log_clicked:
                 if allow_multiple or len(draw.player_list) == 0:
@@ -1402,7 +1442,7 @@ def player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=Tru
             returnme = False
             if event == cv2.EVENT_LBUTTONDOWN and draw.status == None:
                 # check if player clicked or empty space
-                draw, phys, clicked, coords = select_player(draw, phys, x, y, "fire", "fire", board=board)
+                draw, phys, clicked, coords = select_player(draw, phys, x, y, "fire", "fire", board=board, blocks_only=True)
             elif event == cv2.EVENT_LBUTTONDOWN and draw.status == "fire":
                 returnme = True
 
@@ -1489,9 +1529,11 @@ def get_set_selected(draw, phys, new_status, reset_on_none=True, last_loc=False,
         draw.reset()
         return draw, phys
     # get poly from select rectangle
-    poly = np.array(get_squ(draw.locations[0], draw.locations[-1 if last_loc is True else 1]))
+    poly = list(get_poly_from_two_rectangle_points(draw.locations[0], draw.locations[-1 if last_loc is True else 1]).exterior.coords)
     # check which blocks are contained in it
-    contains = check_contains_all(phys.block_list, poly, board=board)
+
+    contains = get_all_in_poly(phys, poly)
+    #contains = check_contains_all(phys.block_list, poly, board=board)
     # if none then reset
     if contains == []:
         draw.reset()
@@ -1513,26 +1555,31 @@ def get_set_selected(draw, phys, new_status, reset_on_none=True, last_loc=False,
 
 
 def select_player(draw, phys, x, y, if_found=None, if_not=None, reset_if_not=False, pause=True, allow_mul=False,
-                  select_all=False, board=None):
-    clicked, coords = get_clicked(phys.block_list, x, y, board)
+                  select_all=False, board=None,blocks_only=False):
+    if blocks_only:
+        blocks = [bl for bl in phys.block_list if bl.background == False and bl.foreground == False and bl.sensor["type"] == None and bl.type > 0]
+    else:
+        blocks = phys.block_list
+
+    clicked, coords = get_clicked(blocks, x, y, board)
     if not clicked is None:
         if len(draw.player_list) == 0 or allow_mul:
-            clicked, coords = get_clicked(phys.block_list, x, y)
+            clicked, coords = get_clicked(blocks, x, y)
             draw.log_player(clicked)
             # also add players connected by rotation joints as it messes things up if not
-            if select_all:
-                players = [clicked]
-                for pl in players:
-                    for jn in pl.body.joints:
-                        if type(jn.joint) == b2RevoluteJoint:
-                            if jn.joint.bodyA.userData["ob"] == pl and jn.joint.bodyB.userData[
-                                "ob"] not in draw.player_list:
-                                draw.log_player(jn.joint.bodyB.userData["ob"])
-                                players.append(jn.joint.bodyB.userData["ob"])
-                            if jn.joint.bodyB.userData["ob"] == pl and jn.joint.bodyA.userData[
-                                "ob"] not in draw.player_list:
-                                draw.log_player(jn.joint.bodyA.userData["ob"])
-                                players.append(jn.joint.bodyA.userData["ob"])
+            # if select_all:
+            #     players = [clicked]
+            #     for pl in players:
+            #         for jn in pl.body.joints:
+            #             if type(jn.joint) == b2RevoluteJoint:
+            #                 if jn.joint.bodyA.userData["ob"] == pl and jn.joint.bodyB.userData[
+            #                     "ob"] not in draw.player_list:
+            #                     draw.log_player(jn.joint.bodyB.userData["ob"])
+            #                     players.append(jn.joint.bodyB.userData["ob"])
+            #                 if jn.joint.bodyB.userData["ob"] == pl and jn.joint.bodyA.userData[
+            #                     "ob"] not in draw.player_list:
+            #                     draw.log_player(jn.joint.bodyA.userData["ob"])
+            #                     players.append(jn.joint.bodyA.userData["ob"])
 
             draw.pause = pause
             if not if_found is None:
@@ -1561,16 +1608,15 @@ def clone_players(draw, phys):
     # get items
     item_list = []
     for bl in draw.player_list:
-        item_list.append(phys.save_block_as_dict(bl))
+        item_list.append(phys.save_block_as_dict(bl,True))
 
     # clone them
     new_obs = phys.create_pre_def_block(item_list, convert_joints=False,clone=True)
-    draw.player_list = phys.block_list[-new_obs:]
     draw.clone_created = True
     return draw, phys
 
 
-def move_players(draw, phys,board):
+def move_players(draw, phys,board,joint_move=False):
     blocks_to_create = []
     players = 0
     # get mouse difference
@@ -1585,18 +1631,24 @@ def move_players(draw, phys,board):
         # update the position
         bl_dic["body"]["position"][0] += convert_to_mks(x_dif)
         bl_dic["body"]["position"][1] += convert_to_mks(y_dif)
-
         # update the anchors for rotation and weld_joints
         for k, v in bl_dic["joints"].items():
             if "anchorA" in bl_dic["joints"][k]:
                 ids = [x.id for x in draw.player_list]
-                if bl_dic["joints"][k]["bodyA"] in ids:
+                if bl_dic["joints"][k]["bodyA"] in ids or joint_move:
                     bl_dic["joints"][k]["anchorA"][0] += convert_to_mks(x_dif)
                     bl_dic["joints"][k]["anchorA"][1] += convert_to_mks(y_dif)
-                if bl_dic["joints"][k]["bodyB"] in ids:
+                    anc = [float(x.replace("(","").replace(")","")) for x in bl_dic["joints_userData"][0]["bodyA"]["anchorA"].split(",")]
+                    anc[0] += convert_to_mks(x_dif)
+                    anc[1] += convert_to_mks(y_dif)
+                    bl_dic["joints_userData"][0]["bodyA"]["anchorA"] = str(tuple(anc))
+                if bl_dic["joints"][k]["bodyB"] in ids or joint_move:
                     bl_dic["joints"][k]["anchorB"][0] += convert_to_mks(x_dif)
                     bl_dic["joints"][k]["anchorB"][1] += convert_to_mks(y_dif)
-
+                    anc = [float(x.replace("(","").replace(")","")) for x in bl_dic["joints_userData"][0]["bodyB"]["anchorB"].split(",")]
+                    anc[0] += convert_to_mks(x_dif)
+                    anc[1] += convert_to_mks(y_dif)
+                    bl_dic["joints_userData"][0]["bodyB"]["anchorB"] = str(tuple(anc))
         # delete old
         del draw.player_list[draw.player_list.index(bl)]
         phys.delete(bl)
@@ -1614,7 +1666,7 @@ def move_players(draw, phys,board):
     return draw, phys
 
 
-def move_clone(draw, phys, x=None, y=None, event=None, clone=None,board=None):
+def move_clone(draw, phys, x=None, y=None, event=None, clone=None,board=None,joint_move = False):
     if event == cv2.EVENT_LBUTTONDOWN:
 
         # for moving selected
@@ -1637,17 +1689,24 @@ def move_clone(draw, phys, x=None, y=None, event=None, clone=None,board=None):
             ##
             # this is for moving the players
             ##
-            draw, phys = move_players(draw, phys,board)
+            draw, phys = move_players(draw, phys,board,joint_move = joint_move)
+            for bl in draw.player_list:
+                bl.body.active = True
+                bl.body.awake = True
+            phys.set_active()
         else:
             # this is for logging of the movment when selecting to draw the recangle box
             draw.log_point(x, y, "select")
 
     elif event == cv2.EVENT_LBUTTONUP:
         if draw.status == "move":
+            #for bl in draw.player_list:
+            #    bl.body.active = True
+            #    bl.body.awake = True
+            #    bl.body.sensor = False
             for bl in draw.player_list:
                 bl.body.active = True
                 bl.body.awake = True
-                bl.body.sensor = False
             draw.reset()
             draw.pause = False
         elif draw.status == "select":

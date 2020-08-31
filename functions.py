@@ -1,3 +1,4 @@
+import ast
 import configparser
 import copy
 import math
@@ -136,17 +137,16 @@ def check_contains_all(block_list, shape, board):
     """ used to search a rectangular shape for blocks"""
 
     contained_list = []
-    square = Polygon(shape)
+
 
     # check if you are allowed to select the floor
-
-
     blocks = block_list
 
-    for bl in blocks:
-        poly = bl.get_poly(board)
-        if square.covers(poly) is True:
-            contained_list.append(bl)
+    for block in [blo for blo in blocks if blo.is_onscreen]:
+        poly = block.translated_position
+        #poly_inside_poly(poly,square)
+        if poly_inside_poly(poly, shape) is True:
+            contained_list.append(block)
 
     return contained_list
 
@@ -218,6 +218,8 @@ def get_config(main, sub, configIn=None):
                 return list([float(x) if "." in str(x) else int(x) for x in val])
             except:
                 return list([x.strip() for x in val])
+    elif "{" in val:
+        return ast.literal_eval(config["blocks_out"]["player_type"])
     elif "(" in val:
         return tuple([float(x.replace("(", "").replace(")", "")) for x in val.split(",")])
     elif "true" in val.lower() or "false" in val.lower():
@@ -255,18 +257,26 @@ def get_all_in_poly(phys,coords):
     :return:
     """
     blocks = []
-    poly = Polygon(coords)
-    for bl in phys.block_list:
 
-        inner = bl.get_poly(6)
-        if poly.contains(inner):
+    poly = Polygon(np.array(coords) + phys.board.translation)
+
+    for bl in [bl for bl in phys.block_list if bl.is_onscreen]:
+
+        inner = [Polygon(fix) for fix in bl.translated_position]
+        answers = [poly.contains(inn) for inn in inner]
+        if sum(answers) == len(inner):
             blocks.append(bl)
+
     if len(blocks) == 0:
-        return False
+        return []
     else:
         return blocks
 
-def get_clicked(bodies, x, y, shrink_cir=16):
+def get_clicked(bodies, x, y, shrink_cir=16,blocks_only=False):
+
+    if blocks_only:
+        bodies = [bl for bl in bodies if bl.background == False and bl.foreground == False and bl.sensor["type"] == None and bl.type > 0]
+
     block = None
     coords = None
 
@@ -274,12 +284,19 @@ def get_clicked(bodies, x, y, shrink_cir=16):
     blocks = [bl for bl in bodies if not bl.background and not bl.foreground]
     foreground = [bl for bl in bodies if bl.foreground]
 
-
+    try:
+        x += bodies[0].board.translation[0]
+        y += bodies[0].board.translation[1]
+    except:
+        #no blocks
+        pass
 
     for i in np.arange(len(background+foreground+blocks) - 1, -1, -1):
         if bodies != []:
             bl = bodies[i]
-            is_clicked, shape = check_contains(bl, (x, y), shrink_cir)
+
+            is_clicked, shape = check_contains(bl.translated_position, (x, y), shrink_cir)
+
             if is_clicked is True:
                 block = bl
                 coords = shape
@@ -291,7 +308,36 @@ def calculateDistance(x1, y1, x2, y2):
     dist = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
     return dist
 
+def poly_inside_poly(v1,inside_v2):
 
+    v1 = Polygon(v1)
+    inside_v2 = Polygon(inside_v2)
+
+    # found = []
+    # for i in range(v1_len):
+    #     founr
+    #     found.append(point_inside_polygon(v1[i][0],v1[i][1],inside_v2))
+    # if len(found) == v1_len:
+    return inside_v2.covers(v1)
+
+def point_inside_polygon(x,y,poly):
+
+    n = len(poly)
+    inside =False
+
+    p1x,p1y = poly[0]
+    for i in range(n+1):
+        p2x,p2y = poly[i % n]
+        if y > min(p1y,p2y):
+            if y <= max(p1y,p2y):
+                if x <= max(p1x,p2x):
+                    if p1y != p2y:
+                        xinters = (y-p1y)*(p2x-p1x)/(p2y-p1y)+p1x
+                    if p1x == p2x or x <= xinters:
+                        inside = not inside
+        p1x,p1y = p2x,p2y
+
+    return inside
 
 def get_poly_from_verts(v1):
     return Polygon(v1)
@@ -305,11 +351,22 @@ def check_contains(v1, p1, shrink_cir=16):
     :param shrink_cir: Used to lower the amount of lines to create the shape - helps with fragmenting
     :return:
     """
-    polygon = v1.get_poly()
-    point = Point(p1[0], p1[1])
+    # polygon = v1.get_poly()
+    # point = Point(p1[0], p1[1])
 
-    return polygon.contains(point), list(polygon.exterior.coords)
+    #return polygon.contains(point), list(polygon.exterior.coords)
+    for pos in v1:
+        if point_inside_polygon(p1[0],p1[1],pos):
+            return True, p1
+    return False, p1
 
+def get_centroid(vertexes):
+    _x_list = [vertex[0] for vertex in vertexes]
+    _y_list = [vertex[1] for vertex in vertexes]
+    _len = len(vertexes)
+    _x = sum(_x_list) / _len
+    _y = sum(_y_list) / _len
+    return (_x, _y)
 
 def dent_contour(cont):
     leng = len(cont)

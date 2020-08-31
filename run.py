@@ -65,7 +65,7 @@ def add(event, x, y, flags, param):
             if msg.message == "Pulley":
                 draw, phys = pulley(draw, phys, event, x_new, y_new, cur_key)
 
-        elif cur_key[1:] == SelectType.player_select.value:
+        elif cur_key[1:] == SelectType.select.value:
             if msg.message == "Merge Blocks":
                 draw, phys = merge_blocks(draw, phys, event, x_new, y_new, cur_key)
 
@@ -191,6 +191,7 @@ def add(event, x, y, flags, param):
         draw, phys = select_blocks(draw, phys, event, x_new, y_new, cur_key)
         if len(draw.player_list) >= 1:
             draw.player_list[0] = update_block(draw.player_list[0])
+            phys.block_list = sorted(phys.block_list,key=lambda itm:itm.draw_position)
             draw.reset()
 
     elif cur_key[0] == "4" and cur_key_type == 0:
@@ -206,17 +207,25 @@ def add(event, x, y, flags, param):
         """
         Used to set spawn point
         """
-        if event == cv2.EVENT_LBUTTONDOWN:
+        draw, phys, ans, coords = get_spawn(draw, phys, event,  x_new, y_new, cur_key)
+
+        if ans:
+
             h, w, _ = board.board.shape
-            phys.options["blocks_out"]["start_pos_x_min"] = int(x_new / w * 100)
-            phys.options["blocks_out"]["start_pos_x_max"] = int(x_new / w * 100)
-            phys.options["blocks_out"]["start_pos_y_min"] = int(y_new / h * 100)
-            phys.options["blocks_out"]["start_pos_y_max"] = int(y_new / h * 100)
-            config["blocks_out"]["start_pos_x_min"] = int(x_new / w * 100)
-            config["blocks_out"]["start_pos_x_max"] = int(x_new / w * 100)
-            config["blocks_out"]["start_pos_y_min"] = int(y_new / h * 100)
-            config["blocks_out"]["start_pos_y_max"] = int(y_new / h * 100)
+
+            max_x, max_y = np.round(np.max(coords, axis=0)).astype(int)
+            min_x, min_y = np.round(np.min(coords, axis=0)).astype(int)
+
+            phys.options["blocks_out"]["start_pos_x_min"] = int(min_x / w * 100)
+            phys.options["blocks_out"]["start_pos_x_max"] = int(max_x / w * 100)
+            phys.options["blocks_out"]["start_pos_y_min"] = int(min_y / h * 100)
+            phys.options["blocks_out"]["start_pos_y_max"] = int(max_y / h * 100)
+            config["blocks_out"]["start_pos_x_min"] = int(min_x / w * 100)
+            config["blocks_out"]["start_pos_x_max"] = int(max_x / w * 100)
+            config["blocks_out"]["start_pos_y_min"] = int(min_y / h * 100)
+            config["blocks_out"]["start_pos_y_max"] = int(max_y / h * 100)
             config.write()
+            draw.reset()
 
     elif cur_key[0] == "t" and cur_key_type == 0:
         """
@@ -250,8 +259,13 @@ def add(event, x, y, flags, param):
         else:
             if msg.message == "Clone Move":
                 draw, phys = move_clone(draw, phys, x_new, y_new, event, True,board=True)
-            else:
-                draw, phys = move_clone(draw, phys, x_new, y_new, event, False, board=True)
+            elif msg.message == "Normal Move":
+                draw, phys = move_clone(draw, phys, x_new, y_new, event, False, board=True,joint_move = False)
+            elif msg.message == "Joint Move":
+                draw, phys = move_clone(draw, phys, x_new, y_new, event, False, board=True,joint_move = True)
+
+
+            phys.set_active()
 
     elif cur_key[0] == "x" and cur_key_type == 0:
 
@@ -421,6 +435,7 @@ if __name__ == "__main__":
         setattr(board, "run", True)
 
 
+
     while board.run:
 
         # read toolbar
@@ -478,7 +493,7 @@ if __name__ == "__main__":
             msg.goal_hits += goal_hits
 
             # step the physics engine1
-            phys.world.Step(timeStep, 6, 3)
+            phys.world.Step(timeStep, 6, 6)
             phys.world.ClearForces()
 
             # this applies impulses gathered from any booster sensors.

@@ -5,7 +5,8 @@ import string
 import time
 import cv2
 import numpy as np
-
+import sys
+import copy
 from sect.triangulation import constrained_delaunay_triangles
 
 from scipy.ndimage import rotate
@@ -16,7 +17,7 @@ from shapely import affinity
 
 from draw_functions import get_enlongated_line, get_poly_from_two_rectangle_points
 from functions import get_config, convert_to_mks, convert_from_mks, dent_contour, fragment_poly, calculateDistance, \
-    get_angle, rotate_around_point_highperf
+    get_angle, rotate_around_point_highperf, get_centroid
 
 import gc
 
@@ -30,9 +31,9 @@ config = ConfigObj('config_default.cfg')
 
 from draw_functions import SelectType
 
+
 def load(height=800, width=1200, b_height=None, b_width=None):
     """ Init """
-
 
     config = ConfigObj("config_default.cfg")
     config.filename = "config.cfg"
@@ -54,7 +55,9 @@ def load(height=800, width=1200, b_height=None, b_width=None):
     block_accuracy = get_config("blocks", "block_accuracy")
     phys = board.load_blocks(phys=phys, block_accuracy=block_accuracy, height=height, width=width)
 
-    phys.world.contactListener = Contacter()
+    phys.world.contactListener = Contacter(phys.world)
+    phys.world.contactFilter = MyContactFilter()
+
     msg = Messenger(get_config("screen", "fps"), board)
 
     msg.board = board
@@ -105,8 +108,8 @@ def load(height=800, width=1200, b_height=None, b_width=None):
 
 def pickler(timer, phys, draw, board, msg, pickle_name, blurb):
     config = ConfigObj('config.cfg')
-    for k,v in phys.options.items():
-        for kk,vv in v.items():
+    for k, v in phys.options.items():
+        for kk, vv in v.items():
             config[k][kk] = str(vv)
     config.write()
 
@@ -134,12 +137,12 @@ def load_state(pickle_name):
     pickle_dic = pickle.load(file)
 
     config = pickle_dic["config"]
-    #config.write()
+    # config.write()
 
     timer = pickle_dic["timer"]
     board = pickle_dic["board"]
     msg = pickle_dic["msg"]
-    phys = Physics(pickle_dic["phys"]["options"]["physics"]["gravity"],config)
+    phys = Physics(pickle_dic["phys"]["options"]["physics"]["gravity"], config)
 
     for k, v in pickle_dic["phys"].items():
         if k in phys.__dict__.keys():
@@ -150,17 +153,20 @@ def load_state(pickle_name):
         if k in draw.__dict__.keys():
             draw.__dict__[k] = v
 
-    phys.create_pre_def_block(pickle_dic["blocks"], convert_joints=False)
-    phys.world.contactListener = Contacter()
-
-    #phys.change_config(config)
-
     draw.board = board
     phys.board = board
+    phys.create_pre_def_block(pickle_dic["blocks"], convert_joints=False, load=True)
+    phys.world.contactListener = Contacter(phys.world)
+    phys.world.contactFilter = MyContactFilter()
+
+    # phys.change_config(config)
+
     for bl in phys.block_list:
         bl.board = board
     msg.board = board
     phys.draw = draw
+
+    phys.set_active()
 
     return timer, phys, draw, board, msg, pickle_dic["blurb"] if "blurb" in pickle_dic.keys() else None
 
@@ -250,6 +256,7 @@ class Draw():
 
     def set_draw_type(self, ty):
         self.draw_type = ty
+
     def get_draw_type(self):
         if self.draw_type == 0:
             return SelectType.draw
@@ -262,7 +269,7 @@ class Draw():
         self.pause = True
         self.player_list.append(player)
 
-        self.coords.append(player.get_poly(3).exterior.coords)
+        #self.coords.append(player.get_poly(3).exterior.coords)
         if len(self.player_list) == 2:
             return True
         return False
@@ -342,21 +349,23 @@ class Draw():
         elif len(self.locations) == 1 and not self.status in ["wheel_draw", "wheel_move", "circle_move", "line_draw",
                                                               "double_dist", "double_dist1", "bullet"]:
             self.board.board_copy = cv2.circle(self.board.board_copy,
-                                               tuple(np.array(self.locations[0]) + self.board.translation), 2,
+                                               tuple(np.array(self.locations[0]).astype(int) + self.board.translation),
+                                               2,
                                                self.board.palette.current_palette[self.board.palette.point], -1)
         elif self.status in ["double_dist", "double_dist1"] and 1 < len(self.locations) <= 3:
             self.board.board_copy = cv2.line(self.board.board_copy,
-                                             tuple(np.array(self.locations[0]) + self.board.translation),
-                                             tuple(np.array(self.locations[1]) + self.board.translation), self.board.palette.current_palette[self.board.palette.line], 2)
+                                             tuple(np.array(self.locations[0]).astype(int) + self.board.translation),
+                                             tuple(np.array(self.locations[1]).astype(int) + self.board.translation),
+                                             self.board.palette.current_palette[self.board.palette.line], 1)
         elif self.status in ["double_dist1"] and len(self.locations) == 4:
             self.board.board_copy = cv2.line(self.board.board_copy,
-                                             tuple(np.array(self.locations[0]) + self.board.translation),
-                                             tuple(np.array(self.locations[1]) + self.board.translation),
-                                             self.board.palette.current_palette[self.board.palette.line], 2)
+                                             tuple(np.array(self.locations[0]).astype(int) + self.board.translation),
+                                             tuple(np.array(self.locations[1]).astype(int) + self.board.translation),
+                                             self.board.palette.current_palette[self.board.palette.line], 1)
             self.board.board_copy = cv2.line(self.board.board_copy,
                                              tuple(np.array(self.locations[2]) + self.board.translation),
                                              tuple(np.array(self.locations[3]) + self.board.translation),
-                                             self.board.palette.current_palette[self.board.palette.line], 2)
+                                             self.board.palette.current_palette[self.board.palette.line], 1)
 
         elif self.status in ["wheel_move"]:
             self.board.board_copy = cv2.circle(self.board.board_copy,
@@ -365,43 +374,46 @@ class Draw():
                                                self.board.palette.current_palette[self.board.palette.line])
         elif self.status in ["wheel_draw", "circle_draw", "circle_move"]:
             self.board.board_copy = cv2.circle(self.board.board_copy,
-                                               tuple(np.array(self.locations[0]) + self.board.translation),
+                                               tuple(np.array(self.locations[0]).astype(int) + self.board.translation),
                                                self.wheel_size if self.wheel_size >= 1 else 1,
                                                self.board.palette.current_palette[self.board.palette.line], -1)
 
         elif len(self.locations) == 2 and self.status == "fire":
             # draw line for fire
             self.board.board_copy = cv2.arrowedLine(self.board.board_copy,
-                                                    tuple(np.array(self.locations[0]) + self.board.translation),
-                                                    tuple(np.array(self.locations[1]) + self.board.translation),
-                                                    self.board.palette.current_palette[self.board.palette.line], 2)
+                                                    tuple(np.array(self.locations[0]).astype(
+                                                        int) + self.board.translation),
+                                                    tuple(np.array(self.locations[1]).astype(
+                                                        int) + self.board.translation),
+                                                    self.board.palette.current_palette[self.board.palette.line], 1)
 
         elif len(self.locations) >= 2 and self.status == "distance":
             self.board.board_copy = cv2.line(self.board.board_copy,
-                                             tuple(np.array(self.locations[0]) + self.board.translation),
+                                             tuple(np.array(self.locations[0]).astype(int) + self.board.translation),
                                              tuple(np.array(self.locations[-1]) + self.board.translation),
-                                             self.board.palette.current_palette[self.board.palette.line], 2)
+                                             self.board.palette.current_palette[self.board.palette.line], 1)
 
         elif len(self.locations) >= 2 and self.status == "length":
             self.board.board_copy = cv2.arrowedLine(self.board.board_copy,
-                                                    tuple(np.array(self.locations[0]) + self.board.translation),
+                                                    tuple(np.array(self.locations[0]).astype(
+                                                        int) + self.board.translation),
                                                     tuple(np.array(self.locations[-1]) + self.board.translation),
-                                                    self.board.palette.current_palette[self.board.palette.line], 2)
+                                                    self.board.palette.current_palette[self.board.palette.line], 1)
 
         elif len(self.locations) >= 2 and (self.status in ["poly", "frag"]):
             # used for drawing the rough shape of the polygon
             for i in range(len(self.locations) - 1):
-                # board = cv2.line(board, np.array(self.locations[0]), np.array(self.locations[1]), (170, 240, 7), 3)
+                # board = cv2.line(board, np.array(self.locations[0]).astype(int, np.array(self.locations[1]).astype(int, (170, 240, 7), 3)
                 self.board.board_copy = cv2.line(self.board.board_copy,
                                                  tuple(np.array(self.locations[i]) + self.board.translation),
                                                  tuple(np.array(self.locations[i + 1]) + self.board.translation),
-                                                 self.board.palette.current_palette[self.board.palette.line], 2)
+                                                 self.board.palette.current_palette[self.board.palette.line], 1)
         elif self.status in ["delete", "select", "rectangle_draw", "rectangle_move"]:
             self.board.board_copy = cv2.rectangle(self.board.board_copy, tuple(
                 np.array([int(x) for x in self.locations[0]]) + self.board.translation),
                                                   tuple(np.array(
                                                       [int(x) for x in self.locations[-1]]) + self.board.translation),
-                                                  self.board.palette.current_palette[self.board.palette.line], 2)
+                                                  self.board.palette.current_palette[self.board.palette.line], 1)
 
 
         elif self.status in ["line_draw"]:
@@ -410,7 +422,7 @@ class Draw():
                     self.board.board_copy = cv2.line(self.board.board_copy,
                                                      tuple(np.array(self.locations[i]) + self.board.translation),
                                                      tuple(np.array(self.locations[i + 1]) + self.board.translation),
-                                                     self.board.palette.current_palette[self.board.palette.line], 2)
+                                                     self.board.palette.current_palette[self.board.palette.line], 1)
 
     def set_distance(self, x, y):
         coord = get_poly_from_ob(self.player_list[0], 3)
@@ -424,15 +436,12 @@ class Draw():
             for block in self.player_list:
                 # dont draw if player
                 if not block.is_player:
-                    coord = block.get_poly(3).exterior.coords
-                    for i in range(len(coord)):
-                        co1 = tuple(np.array([int(x) for x in coord[i]]) + self.board.translation)
-                        co2 = tuple(np.array(
-                            [int(x) for x in coord[(i + 1) if i != len(coord) - 1 else 0]]) + self.board.translation)
-                        self.board.board_copy = cv2.line(self.board.board_copy, co1, co2,
-                                                         self.board.palette.current_palette[self.board.palette.line], 3)
-                        self.board.board_copy = cv2.line(self.board.board_copy, co1, co2,
-                                                         self.board.palette.current_palette[self.board.palette.line], 2)
+                    for fix in block.translated_position:
+                        for i in range(len(fix) - 1):
+                            co1 = tuple(fix[i].astype(int))
+                            co2 = tuple(fix[i + 1].astype(int))
+                            self.board.board_copy = cv2.line(self.board.board_copy, co1, co2,
+                                                             self.board.palette.current_palette[self.board.palette.line], 1)
 
     def reset(self):
         self.status = None
@@ -474,6 +483,10 @@ class Physics():
         self.move_keys_list = {}
         self.force_draw_all = False
 
+    def set_active(self):
+        for bl in self.block_list:
+            bl.body.active = bl.active
+
     def do_keypress(self, key):
         """
         Used to fire the allocated moves to players from predefined keys supplier by user.
@@ -485,15 +498,14 @@ class Physics():
             for k, keys_vals in bl.keys.items():
                 for action in keys_vals:
                     if k != None and ord(k) == key:
-                        #if cancel rotation
+                        # if cancel rotation
                         if "cancel_rotation" in action.keys():
                             if action["cancel_rotation"]:
                                 bl.body.angularVelocity = 0
 
                         if "cancel_velocity" in action.keys():
                             if action["cancel_velocity"]:
-                                bl.body.linearVelocity = (0,0)
-
+                                bl.body.linearVelocity = (0, 0)
 
                         # if the toggle is activated the switch the toggle on keypress
                         if action["toggle_allowed"] == True and ord(k) == key:
@@ -576,32 +588,50 @@ class Physics():
 
                             elif "motor" in action["type"]:
 
-                                #check its the correct motor
+                                # check its the correct motor
                                 motor_id = action["id"]
                                 joint = [jn.joint for jn in bl.body.joints if jn.joint.userData["id"] == action["id"]]
                                 if joint != []:
                                     joint = joint[0]
-                                    #set the current key
+                                    # set the current key
                                     joint.userData["key"] = k
                                     joint.motorEnabled = True
-                                    #does the motor need to
-                                    if action["hold_motor_in_place"]:
-                                        lower = float(joint.userData["old_lower_upper"][0])
-                                        upper = float(joint.userData["old_lower_upper"][1])
-                                        joint.SetLimits(lower, upper)
-
-                                        if "Prismatic" in str(type(joint)):
-                                            vector = joint.userData["vector"]
-                                            vector = np.array(rotate_around_point_highperf(vector, joint.GetReferenceAngle()))
-                                            bl.body.ApplyForce(vector if joint.motorSpeed >= 0 else -vector,bl.body.worldCenter, wake=True)
-                                        #joint.limits joint.userData["old_lower_upper"]
-
-                                    if action["type"] == "motor forwards":
-                                        if joint.motorSpeed > 0:
-                                            joint.motorSpeed *= -1
-                                    elif action["type"] == "motor backwards":
+                                    # does the motor need to
+                                    # if action["hold_motor_in_place"]:
+                                    # lower = float(joint.userData["old_lower_upper"][0])
+                                    # upper = float(joint.userData["old_lower_upper"][1])
+                                    # joint.SetLimits(lower, upper)
+                                    #
+                                    # if "Prismatic" in str(type(joint)):
+                                    #     vector = joint.userData["vector"]
+                                    #     vector = np.array(rotate_around_point_highperf(vector, joint.GetReferenceAngle()))
+                                    #     bl.body.ApplyForce(vector if joint.motorSpeed >= 0 else -vector,bl.body.worldCenter, wake=True)
+                                    # #joint.limits joint.userData["old_lower_upper"]
+                                    # elif action["type"] == "motor backwards" and not action["hold_motor_in_place"]:
+                                    if action["type"] == "motor forwards" and not action["hold_motor_in_place"]:
                                         if joint.motorSpeed < 0:
                                             joint.motorSpeed *= -1
+
+                                    elif action["type"] == "motor backwards" and not action["hold_motor_in_place"]:
+                                        if joint.motorSpeed > 0:
+                                            joint.motorSpeed *= -1
+
+                                    elif action["type"] in ["motor backwards", "motor forwards"] and action[
+                                        "hold_motor_in_place"]:
+                                        if action["type"] == "motor backwards":
+                                            lower = joint.lowerLimit + (0.05 * joint.motorSpeed)
+                                            upper = lower + 0.02
+                                        else:
+                                            lower = joint.lowerLimit - (0.05 * joint.motorSpeed)
+                                            upper = lower + 0.02
+
+                                        if upper > joint.userData["old_lower_upper"][1]:
+                                            upper = joint.userData["old_lower_upper"][1]
+                                        if lower < joint.userData["old_lower_upper"][0]:
+                                            lower = joint.userData["old_lower_upper"][0]
+                                        if lower > upper:
+                                            lower = upper - 0.02
+                                        joint.SetLimits(lower, upper)
 
                     # if not keypress and not toggle
                     else:
@@ -609,28 +639,35 @@ class Physics():
                         joint = [jn.joint for jn in bl.body.joints if jn.joint.userData["id"] == action["id"]]
                         if joint != []:
                             joint = joint[0]
-                            if (action["toggle_allowed"] is True and action["toggle_status"] is False) or action["toggle_allowed"] is False:
-                                    if k == joint.userData["key"]:
-                                        joint.motorEnabled = False
-
-                                        #
-                                        if action["hold_motor_in_place"]:
-                                            if "Revolute" in str(type(joint)):
-                                                joint.userData["current_position"] = joint.angle
-                                                pos = joint.userData["current_position"]
-                                                if pos != 0:
-                                                    joint.SetLimits(pos + (-0.01 if pos > 0 else 0.01),
-                                                                    pos + (0.01 if pos > 0 else -0.01))
-                                            elif "Prismatic" in str(type(joint)):
-                                                joint.userData["current_position"] = joint.translation
-                                                pos = joint.userData["current_position"]
-                                                if pos != 0:
-                                                    joint.SetLimits(pos + (0.3 if pos > 0 else -0.3 ),
-                                                                pos + (-0.3 if pos > 0 else 0.3))
-
-
-
-
+                            if (action["toggle_allowed"] is True and action["toggle_status"] is False) or action[
+                                "toggle_allowed"] is False:
+                                if k == joint.userData["key"]:
+                                    joint.motorEnabled = False
+                                    # used to hold motor in place.
+                                # if action["hold_motor_in_place"]:
+                                #
+                                #     if "Revolute" in str(type(joint)):
+                                #         joint.userData["current_position"] = joint.angle
+                                #         pos = joint.userData["current_position"]
+                                #     elif "Prismatic" in str(type(joint)):
+                                #         joint.userData["current_position"] = joint.translation
+                                #         pos = joint.userData["current_position"]
+                                #
+                                #     if pos != 0:
+                                #         joint.limitEnabled = True
+                                #         if "forward" in action["type"]:
+                                #             pos += 1.05
+                                #             # joint.SetLimits
+                                #         elif "backward" in action["type"]:
+                                #             # joint.SetLimits
+                                #             pos += .95
+                                #
+                                #         joint.SetLimits(pos, pos)
+                                #         joint.lowerLimit = pos
+                                #         joint.upperLimit = pos
+                                #         joint.limits = b2Vec2(pos, pos)
+                                #
+                                #     joint.userData["key"] = None
 
     def change_config(self, config=None, board=None):
         if config is None:
@@ -672,7 +709,7 @@ class Physics():
                 if not block.static:
                     self.delete(block)
 
-    def save_block_as_dict(self, block,clone=False):
+    def save_block_as_dict(self, block, clone=False):
 
         """
         used to split the block into a dict of information for pickling
@@ -681,9 +718,13 @@ class Physics():
         """
 
         # get main block information
+
         block_dic = {k: v for k, v in block.__dict__.items() if not "b2" in str(type(v))}
 
-        #create a clone id for identifying the object when recreating
+        #fixed issue with a strong ref to the object
+        block_dic["keys"] = copy.copy(block_dic["keys"])
+
+        # create a clone id for identifying the object when recreating
         clone_id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))
 
         # if block.type == 2 or block.type == -2:
@@ -724,6 +765,7 @@ class Physics():
                                "sensor": fix.sensor,
                                "friction": fix.friction,
                                "density": fix.density,
+                               "groupIndex": fix.filterData.groupIndex,
                                }
 
             shape_dic[i] = {"type": str(type(fix.shape)),
@@ -753,13 +795,19 @@ class Physics():
                     anc = joint.joint.anchorB
                     joints_dic["anchorB"] = [anc.x, anc.y]
                 elif attr is "bodyA" and hasattr(joint.joint, "bodyA"):
-                    joints_dic["bodyA"] = joint.joint.bodyA.userData["ob"].id if joint.joint.bodyA.userData["ob"].id != block.id else clone_id if clone else block.id
+                    joints_dic["bodyA"] = joint.joint.bodyA.userData["ob"].id if not clone or block.id != \
+                                                                                 joint.joint.bodyA.userData[
+                                                                                     "ob"].id else clone_id
                 elif attr is "bodyB" and hasattr(joint.joint, "bodyB"):
-                    joints_dic["bodyB"] = joint.joint.bodyB.userData["ob"].id if joint.joint.bodyB.userData["ob"].id != block.id else clone_id if clone else block.id
+                    joints_dic["bodyB"] = joint.joint.bodyB.userData["ob"].id if not clone or block.id != \
+                                                                                 joint.joint.bodyB.userData[
+                                                                                     "ob"].id else clone_id
                 elif attr is "groundAnchorA" and hasattr(joint.joint, "groundAnchorA"):
-                    joints_dic["groundAnchorA"] = joint.joint.groundAnchorA.userData["ob"].id if joint.joint.groundAnchorA.userData["ob"].id != block.id else clone_id if clone else block.id
+                    joints_dic["groundAnchorA"] = joint.joint.groundAnchorA.userData[
+                        "ob"].id if not clone or block.id == joint.joint.groundAnchorA.userData["ob"].id else clone_id
                 elif attr is "groundAnchorB" and hasattr(joint.joint, "groundAnchorB"):
-                    joints_dic["groundAnchorB"] = joint.joint.groundAnchorB.userData["ob"].id if joint.joint.groundAnchorB.userData["ob"].id != block.id else clone_id if clone else block.id
+                    joints_dic["groundAnchorB"] = joint.joint.groundAnchorB.userData[
+                        "ob"].id if not clone or block.id == joint.joint.groundAnchorB.userData["ob"].id else clone_id
                 else:
                     ok = False
                     if "get" + attr.lower() in lower_attributes:
@@ -776,16 +824,16 @@ class Physics():
                         joints_dic[attr] = val
 
             try:
-                #ax = block.body.GetWorldPoint(joint.joint.GetLocalAxisA())
+                # ax = block.body.GetWorldPoint(joint.joint.GetLocalAxisA())
                 joints_dic["axis"] = joint.joint.userData["vector"]
             except:
                 pass
 
             all_joints[i] = joints_dic
 
-            #save joints userdata
+            # save joints userdata
             current_joint_userData = {}
-            for k,v in joint.joint.userData.items():
+            for k, v in joint.joint.userData.items():
                 if "b2" in str(type(v)):
                     current_joint_userData[k] = str(type(v))
                 else:
@@ -793,12 +841,16 @@ class Physics():
 
             all_joints_userData[i] = current_joint_userData
 
-        return {"block": block_dic, "body": body_dic,"body_user_dict":body_user_dict, "mass": mas_dic, "fixtures": fixtures_dic, "shapes": shape_dic,
-                "joints": all_joints,"joints_userData":all_joints_userData,"clone_id":clone_id}
+        return {"block": block_dic, "body": body_dic, "body_user_dict": body_user_dict, "mass": mas_dic,
+                "fixtures": fixtures_dic, "shapes": shape_dic,
+                "joints": all_joints, "joints_userData": all_joints_userData, "clone_id": clone_id}
 
-    def create_pre_def_block(self, info, convert_joints=True,clone=False):
-
+    def create_pre_def_block(self, info, convert_joints=True, clone=False, load=False):
+        """
+        Used to recreate blocks saved as a dict
+        """
         new_obs = 0
+        new_blocks = []
         # loop and create each item again
         for block_info in info:
 
@@ -817,7 +869,7 @@ class Physics():
                                       fixtures=b2FixtureDef(
                                           shape=b2PolygonShape(vertices=shape),
                                           density=block_info["fixtures"][0]["density"])),
-                          set_sprite=False, poly_type=block_info["block"]["type"])
+                          set_sprite=False, poly_type=block_info["block"]["type"], board=self.board)
 
                 )
 
@@ -829,11 +881,11 @@ class Physics():
                                       fixtures=b2FixtureDef(
                                           shape=b2CircleShape(radius=block_info["shapes"][0]["radius"]),
                                           density=block_info["fixtures"][0]["density"]))
-                          , set_sprite=False, poly_type=block_info["block"]["type"]))
+                          , set_sprite=False, poly_type=block_info["block"]["type"], board=self.board))
 
             # get current block and add settings
             block = self.block_list[-1]
-
+            new_blocks.append(block)
             # if found then add other fixtures
             if len(block_info["fixtures"].keys()) > 1:
                 for x in range(len(block_info["fixtures"].keys())):
@@ -864,9 +916,9 @@ class Physics():
                 block.set_height_width()
 
                 if block_info["block"]["type"] in [-1, 1, 3]:
-                    block.sprite = cv2.resize(block.sprite, dsize=(int(block.width), int(block.height)))
-                    block.mask = cv2.resize(block.mask, dsize=(int(block.width), int(block.height)))
-                    block.inv_mask = cv2.resize(block.inv_mask, dsize=(int(block.width), int(block.height)))
+                    block.sprite = cv2.resize(block.sprite, dsize=(int(block.width), int(block.height)),interpolation=cv2.INTER_LANCZOS4)
+                    block.mask = cv2.resize(block.mask, dsize=(int(block.width), int(block.height)),interpolation=cv2.INTER_LANCZOS4)
+                    block.inv_mask = cv2.resize(block.inv_mask, dsize=(int(block.width), int(block.height)),interpolation=cv2.INTER_LANCZOS4)
 
             # not needed any more!!
             # if block.sprite_on and not type(block.sprite) is None:
@@ -875,7 +927,7 @@ class Physics():
             if clone:
                 block.id = block_info["clone_id"]
                 block.old_id = block_info["block"]["id"]
-                #block.clone_id
+                # block.clone_id
 
             for k, v in block_info["body"].items():
                 if hasattr(block.body, k):
@@ -915,12 +967,21 @@ class Physics():
 
             new_obs += 1
 
-            #set userData
-            for k,v in block_info["body_user_dict"].items():
+            # set userData
+            for k, v in block_info["body_user_dict"].items():
                 if not "ob" in k:
                     block.body.userData[k] = v
 
             block.body.userData["ob"] = block
+            block.base_poly = block.set_base_poly(5)
+            block.base_poly_coords = np.array([np.array(pl.exterior.coords) for pl in block.base_poly])
+            block.get_current_pos(True)
+            block.body.active = block_info["body"]["active"]
+            block.body.awake = block_info["body"]["awake"]
+
+            for i,fix in enumerate(block.body.fixtures):
+                if "groupIndex" in block_info["fixtures"][i].keys():
+                    fix.filterData.groupIndex = block_info["fixtures"][i]["groupIndex"]
 
         # get individual joints
 
@@ -928,25 +989,77 @@ class Physics():
         jointsUser = [x["joints_userData"] for x in info if x["joints_userData"] != {}]
         i = 0
         new_joints = {}
-        for joint in joints:
-            for k, v in joint.items():
-                if v not in new_joints.values():
-                    new_joints[i] = v
+        for joint, user in zip(joints, jointsUser):
+            for (jk, jv), (uk, uv) in zip(joint.items(), user.items()):
+                if jv not in new_joints.values():
+                    new_joints[i] = jv
 
-                    a = self.get_block_by_id(v["bodyA"])
-                    b = self.get_block_by_id(v["bodyB"])
-                    if v["type"] == b2RopeJoint:
-                        self.create_rope_joint(a, b, v["anchorA"], v["anchorB"], v["maxLength"], convert_joints)
-                    elif v["type"] == b2DistanceJoint:
-                        self.create_distance_joint(a, b, v["anchorA"], v["anchorB"], convert_joints)
-                    elif v["type"] == b2RevoluteJoint:
-                        self.create_rotation_joint(a, b, v["anchorA"], convert_joints)
-                    elif v["type"] == b2WeldJoint:
-                        self.create_weld_joint(a, b, v["anchorA"], convert_joints)
-                    elif v["type"] == b2PrismaticJoint:
-                        self.create_prismatic(a, b, vector=v["axis"], anchor= v["anchorA"], distance=v["upperLimit"],convert=convert_joints)
-                    elif v["type"] == b2PulleyJoint:
-                        self.create_pulley(a,b,v["lines"])
+                    a = self.get_block_by_id(jv["bodyA"])
+                    b = self.get_block_by_id(jv["bodyB"])
+                    new_ancA = None
+                    new_ancB = None
+                    if not clone and load and "bodyA" in uv.keys():
+                        # save current position and angles
+                        aoldpos = b2Vec2(a.body.position[0], a.body.position[1])
+                        aOldWorldCen = b2Vec2(a.body.worldCenter[0], a.body.worldCenter[1])
+                        aoldangle = a.body.angle
+
+                        bOldWorldCen = b2Vec2(b.body.worldCenter[0], b.body.worldCenter[1])
+                        boldpos = b2Vec2(b.body.position[0], b.body.position[1])
+                        boldangle = b.body.angle
+
+                        # get position of joint when created.
+                        apos = [float(x.replace("(", "").replace(")", "")) for x in uv["bodyA"]["position"].split(",")]
+                        bpos = [float(x.replace("(", "").replace(")", "")) for x in uv["bodyB"]["position"].split(",")]
+                        if "worldCenter" in uv["bodyA"].keys():
+                            aWorldCen = [float(x.replace("(", "").replace(")", "")) for x in uv["bodyA"]["worldCenter"].split(",")]
+                            bWorldCen = [float(x.replace("(", "").replace(")", "")) for x in uv["bodyB"]["worldCenter"].split(",")]
+                        else:
+                            aWorldCen = apos
+                            bWorldCen = bpos
+
+
+                        # set position of blocks to starting position
+                        a.body.position = b2Vec2(apos[0], apos[1])
+                        a.body.worldCenter.x = aWorldCen[0]
+                        a.body.worldCenter.y = aWorldCen[1]
+                        a.body.angle = uv["bodyA"]["rotation"]
+
+
+                        b.body.position = b2Vec2(bpos[0], bpos[1])
+                        b.body.worldCenter.x = bWorldCen[0]
+                        b.body.worldCenter.y = bWorldCen[1]
+                        b.body.angle = uv["bodyB"]["rotation"]
+
+                        # new_ancA = b2Vec2(jv["anchorA"]) + (aoldpos-a.body.position)
+                        # new_ancB = b2Vec2(jv["anchorB"]) + (boldpos-b.body.positi
+
+                        # get anchor points of starting position
+                        new_ancA = [float(x.replace("(", "").replace(")", "")) for x in
+                                    uv["bodyA"]["anchorA"].split(",")]
+                        new_ancB = [float(x.replace("(", "").replace(")", "")) for x in
+                                    uv["bodyB"]["anchorB"].split(",")]
+
+                        # round(v["upperLimit"] - 0.02,4) == round(v["lowerLimit"],4):
+
+                    if new_ancA is None:
+                        new_ancA = jv["anchorA"]
+                        new_ancB = jv["anchorB"]
+
+                    # create joint
+                    if jv["type"] == b2RopeJoint:
+                        self.create_rope_joint(a, b, new_ancA, new_ancB, jv["maxLength"], convert_joints)
+                    elif jv["type"] == b2DistanceJoint:
+                        self.create_distance_joint(a, b, new_ancA, new_ancB, convert_joints)
+                    elif jv["type"] == b2RevoluteJoint:
+                        self.create_rotation_joint(a, b, new_ancA, convert_joints)
+                    elif jv["type"] == b2WeldJoint:
+                        self.create_weld_joint(a, b, new_ancA, convert_joints)
+                    elif jv["type"] == b2PrismaticJoint:
+                        self.create_prismatic(a, b, vector=jv["axis"], anchor=new_ancA, distance=jv["upperLimit"],
+                                              convert=convert_joints)
+                    elif jv["type"] == b2PulleyJoint:
+                        self.create_pulley(a, b, jv["lines"])
                     else:
                         print("help")
 
@@ -958,8 +1071,7 @@ class Physics():
                     methods = [x[0] for x in
                                [a for a in methods if not (a[0].startswith('__') and a[0].endswith('__'))]]
 
-
-                    for key, val in v.items():
+                    for key, val in jv.items():
                         if not key in ["anchorA", "anchorB", "bodyA", "bodyB", "groundAnchorA", "groundAnchorB",
                                        "type"]:
                             if "set" + key.lower() in lower_methods:
@@ -985,14 +1097,32 @@ class Physics():
                                     pass
 
                     try:
-                        for k,v in jointsUser[i][0].items():
+                        for k, v in uv.items():
                             self.world.joints[-1].userData[k] = v
+
                     except IndexError:
                         pass
 
+                    # set back to old position
+                    if not clone and load and "bodyA" in uv.keys():
 
+                        a.body.position = aoldpos
+                        a.body.worldCenter.x = aOldWorldCen[0]
+                        a.body.worldCenter.y = aOldWorldCen[1]
+                        a.body.angle = aoldangle
+
+                        b.body.position = boldpos
+                        b.body.worldCenter.x = bOldWorldCen[0]
+                        b.body.worldCenter.y = bOldWorldCen[1]
+                        b.body.angle = boldangle
 
                 i += 1
+
+        if not clone:
+            for bl in new_blocks:
+                if "cur_pos" in bl.body.userData.keys():
+                    bl.body.position = (float(bl.body.userData["cur_pos"][0]), float(bl.body.userData["cur_pos"][1]))
+
         return new_obs
 
     def get_block_by_id(self, id):
@@ -1010,8 +1140,8 @@ class Physics():
         if not type(block) == list:
             block = [block]
 
-        for bl in block:
-
+        delete_list = []
+        for i, bl in enumerate(block):
             body_dic = {"inertia": bl.body.inertia,
                         "linearVelocity": [bl.body.linearVelocity.x, bl.body.linearVelocity.y],
                         "awake": bl.body.awake,
@@ -1020,11 +1150,15 @@ class Physics():
                         "angularVelocity": bl.body.angularVelocity}
 
             poly = bl.get_poly(4)
-            shape = list(poly.exterior.coords)[:-1]
+            shape = list(poly.convex_hull.exterior.coords)[:-1]
 
             if len(shape) <= 4:
                 shape = dent_contour(shape)
             conts = fragment_poly(shape)
+
+            static = bl.static
+            block = self.delete(bl)
+            del bl
 
             for con in conts:
                 poly = Polygon(con)
@@ -1035,7 +1169,7 @@ class Physics():
                 else:
                     poly_type = -1
 
-                if bl.static:
+                if static:
                     # complete.append(not create_block(pos=(poly.centroid.x,poly.centroid.y), forc=0, out=0, player=1, shape=con))
                     self.create_block(pos=(poly.centroid.x, poly.centroid.y), poly_type=poly_type, shape=new_con)
                 else:
@@ -1060,8 +1194,7 @@ class Physics():
                                 setattr(block_new.body, k, v)
                         except Exception as e:
                             print(e)
-
-            self.delete(bl)
+            # delete_list.append(i)
 
     def fractal_create(self, shape, static=True, convert=False, terrain=False):
 
@@ -1199,7 +1332,7 @@ class Physics():
                                       fixtures=b2FixtureDef(
                                           shape=b2PolygonShape(vertices=shapes),
                                           density=size)),
-                          set_sprite=set_sprite, draw_static=draw_static, poly_type=poly_type)
+                          set_sprite=set_sprite, draw_static=draw_static, poly_type=poly_type, board=self.board)
 
                 )
                 self.block_list[-1].body.fixtures[0].restitution = self.options["static_blocks"]["rest"]
@@ -1218,7 +1351,7 @@ class Physics():
                                       fixtures=b2FixtureDef(
                                           shape=b2CircleShape(radius=rad),
                                           density=density))
-                          , set_sprite=set_sprite, poly_type=poly_type, static_shape=True)
+                          , set_sprite=set_sprite, poly_type=poly_type, static_shape=True, board=self.board)
                 )
             except AssertionError:
                 print("circle creation error, check me")
@@ -1238,7 +1371,7 @@ class Physics():
                                       fixtures=b2FixtureDef(
                                           shape=b2PolygonShape(vertices=shapes),
                                           density=density))
-                          , False, set_sprite=set_sprite, poly_type=poly_type)
+                          , False, set_sprite=set_sprite, poly_type=poly_type, board=self.board)
                 )
 
                 # check if config says to set sprite and load if so
@@ -1262,7 +1395,7 @@ class Physics():
                                       fixtures=b2FixtureDef(
                                           shape=b2CircleShape(radius=rad),
                                           density=density))
-                          , set_sprite=set_sprite, poly_type=poly_type)
+                          , set_sprite=set_sprite, poly_type=poly_type, board=self.board)
                 )
                 # check if config says to set sprite and load if so
                 if self.options["squares"]["sprite_on"]:
@@ -1275,6 +1408,9 @@ class Physics():
                 return False
 
         block = self.block_list[-1]
+        if block.type > 0:
+            block.body.bullet = self.options["blocks_out"]["bullet"]
+
         if force_static_block:
             block.is_terrain = True
             block.body.awake = False
@@ -1282,6 +1418,9 @@ class Physics():
         block.body.fixtures[0].restitution = rest
         block.body.fixtures[0].density = density
         block.body.fixtures[0].friction = friction
+
+        block.body.fixtures[0].filterData.groupIndex = 0
+
         block.body.fixedRotation = self.options["blocks_out"]["fixed_rotation"]
 
         if foreground:
@@ -1305,31 +1444,50 @@ class Physics():
 
         base_center = base_bl.body.position
 
-        for i in np.arange(len(bls) - 1, -1, -1):
-            bl = bls[i]
-            for fix in bl.body.fixtures:
-                if type(fix.shape) == b2PolygonShape:
-                    shape = fix.shape.vertices
-                    poly = Polygon(shape)
-                    shape = list(rt(poly, bl.body.angle, use_radians=True).exterior.coords)
+        delete_list = []
 
-                    center = bl.body.position
-                    trans = (center - base_center) * -1
-                    new_shape = [b2Vec2(s) - trans for s in shape]
+        for i in np.arange(len(bls) - 1, -1, -1):
+            bl = bls.pop(i)
+            for fix in bl.body.fixtures:
+
+                if type(fix.shape) == b2PolygonShape:
+                    # shape = fix.shape.vertices
+                    # poly = Polygon(shape)
+                    # shape = list(rt(poly, bl.body.angle, use_radians=True).exterior.coords)
+                    #
+                    # center = bl.body.position
+                    # trans = (center - base_center) * -1
+                    # new_shape = [b2Vec2(s) - trans for s in shape]
+
+                    new_shape = [base_bl.body.GetLocalPoint((bl.body.transform * v)) for v in fix.shape.vertices]
+
                     base_bl.body.CreateFixture(b2FixtureDef(shape=b2PolygonShape(vertices=new_shape),
                                                             restitution=bl.body.fixtures[0].restitution,
                                                             density=bl.body.fixtures[0].density,
                                                             friction=bl.body.fixtures[0].friction))
+
+                    base_bl.base_poly = base_bl.set_base_poly()
+                    base_bl.base_poly_coords = np.array([np.array(pl.exterior.coords) for pl in base_bl.base_poly])
                 else:
+
                     radius = fix.shape.radius
                     center = bl.body.position
-                    trans = (base_center - center) * -1
+                    trans = base_bl.body.GetLocalPoint((float(bl.body.worldCenter.x),float(bl.body.worldCenter.y)))
                     # trans[0] = trans[0] * -1
                     base_bl.body.CreateFixture(b2FixtureDef(shape=b2CircleShape(radius=radius, pos=trans),
                                                             restitution=bl.body.fixtures[0].restitution,
                                                             density=bl.body.fixtures[0].density,
                                                             friction=bl.body.fixtures[0].friction))
-            self.delete(bl)
+            delete_list.append(bl)
+
+        self.delete(delete_list)
+
+        base_bl.base_poly = base_bl.set_base_poly()
+        base_bl.base_poly_coords = np.array([np.array(pl.exterior.coords) for pl in base_bl.base_poly])
+
+        for i, fix in enumerate(base_bl.body.fixtures):
+            if i != 0:
+                fix.filterData.groupIndex = base_bl.body.fixtures[0].filterData.groupIndex
 
         if is_terrain:
             base_bl.poly = base_bl.get_poly()
@@ -1347,187 +1505,206 @@ class Physics():
 
         for i in range(blocks_length, -1, -1):
             bl = self.block_list[i]
-
-            userData = bl.body.userData
-            if userData["bullet_actions"] == "hit":
-                if self.options["player"]["bullet_fragment"]:
-                    if bl.type < 0:
-                        convert = True
-                    else:
-                        convert = False
-                    self.fractal_block(bl, False, convert=True)
-                else:
-                    self.delete(bl)
-
-            elif userData["bullet_actions"] == "kill":
-                self.delete(bl)
-
             remove_positions = []
-            for i, act in enumerate(userData["actions"]):
 
-                sensor = [bl for bl in self.block_list if bl.id == act["id"]]
-                if len(sensor) == 0:
-                    remove_positions.append(i)
-                    break
-                else:
-                    sensor = sensor[0]
+            if bl.body.awake:
 
-                contains_poly = sensor.get_poly().contains(bl.get_poly())
+                userData = bl.body.userData
 
-                # action for switching gravity
-                if act["type"] == "gravity" and act["complete"] is False:
-                    if (contains_poly and act["fire_action_once_contained"]) or not act["fire_action_once_contained"]:
-                        bl.body.gravityScale *= -1
-                        act["complete"] = True
-                        if act["reverse_keys"]:
-                            for k, v in bl.keys.items():
-                                for act in v:
-                                    try:
-                                        if type(act["extra"]) in [float, int]:
-                                            act["extra"] *= -1
-                                        elif type(act["extra"]) in [list, tuple]:
-                                            act["extra"] = np.array(act["extra"]) * -1
-                                        else:
-                                            pass
-                                    except ValueError:
-                                        # error setting value
-                                        pass
+                if userData["bullet_actions"] == "hit":
+                    if self.options["player"]["bullet_fragment"]:
+                        if bl.type < 0:
+                            convert = True
+                        else:
+                            convert = False
+                        self.fractal_block(bl, False, convert=True)
+                    else:
+                        self.delete(bl)
 
-                if act["type"] == "center" and act["complete"] is False:
-                    if (contains_poly and act["fire_action_once_contained"]) or not act["fire_action_once_contained"]:
+                elif userData["bullet_actions"] == "kill":
+                    self.delete(bl)
+                    return
 
-                        bl.center_me = True
-                        bl.death_actions["return_translation"] =  act["translation"]
-                        if not act["allow_multiple_fires"]:
-                            act["complete"] = True
-
-                if act["type"] == "impulse" and act["complete"] is False:
-                    if (contains_poly and act["fire_action_once_contained"]) or not act["fire_action_once_contained"]:
-
-                        bl.body.ApplyLinearImpulse((np.array(act["vector"]) * bl.body.mass) * 2, bl.body.worldCenter,
-                                                   wake=True)
-                        if not act["allow_multiple_fires"]:
-                            act["complete"] = True
-
-                if act["type"] == "force" and act["complete"] is False:
-                    if (contains_poly and act["fire_action_once_contained"]) or not act["fire_action_once_contained"]:
-                        bl.body.ApplyForce((np.array(act["vector"]) * bl.body.mass) * 2, bl.body.worldCenter,
-                                           wake=True)
-
-                        if not act["allow_multiple_fires"]:
-                            act["complete"] = True
-
-                # action for Water
-                if act["type"] == "water" and act["complete"] is False:
+                for i, act in enumerate(userData["actions"]):
 
                     sensor = [bl for bl in self.block_list if bl.id == act["id"]]
-                    if len(sensor) > 0:
-                        sensor = sensor[0]
-                        bl_poly = bl.get_poly(4)
-                        sensor_poly = sensor.get_poly(4)
-                        intersection = sensor_poly.intersection(bl_poly)
-                        if type(intersection) is MultiPolygon:
-                            intersection = intersection.convex_hull
-
-                        int_area = convert_to_mks(intersection.area) / 42.5
-                        if int_area > 0:
-                            int_centroid = convert_to_mks(intersection.centroid.x, intersection.centroid.y)
-                            water_density = bl.body.fixtures[0].density
-                            displaced_mass = water_density * int_area
-                            buoyancy_force = displaced_mass * -np.array(self.gravity)
-
-                            bl.body.ApplyForce(buoyancy_force, int_centroid, wake=True)
-                            coords = list(intersection.exterior.coords)
-
-                            for i in range(len(coords) - 1):
-                                v0 = b2Vec2(convert_to_mks(coords[i][0], coords[i][1]))
-                                v1 = b2Vec2(convert_to_mks(coords[i + 1][0], coords[i + 1][1]))
-                                mid = 0.5 * (v0 + v1)
-                                velDir = b2Vec2(bl.body.GetLinearVelocityFromWorldPoint(
-                                    mid) - sensor.body.GetLinearVelocityFromWorldPoint(mid))
-                                vel = velDir.Normalize()
-                                edge = b2Vec2(v1 - v0)
-                                edgeLength = b2Vec2(edge).Normalize()
-                                normal = b2Vec2(b2Cross(-1, edge))
-                                dragDot = b2Dot(normal, velDir)
-                                if dragDot > 0:
-                                    dragMag = dragDot * edgeLength * water_density * vel * vel
-                                    dragForce = dragMag * -velDir
-                                    bl.body.ApplyForce(dragForce, mid, wake=True)
-
-                                    # lift for moving objects
-                                    liftDot = b2Dot(edge, velDir);
-                                    liftMag = (dragDot * liftDot) * edgeLength * water_density * vel * vel
-                                    liftDir = b2Vec2(b2Cross(1, velDir))
-                                    liftForce = b2Vec2(liftMag * liftDir)
-                                    bl.body.ApplyForce(liftForce, mid, wake=True);
-
-                            angularDrag = int_area * -bl.body.angularVelocity
-                            bl.body.ApplyTorque(angularDrag, wake=True)
+                    if len(sensor) == 0:
+                        remove_positions.append(i)
+                        break
                     else:
-                        pass
-                # action for switching gravity to low (almost water like)
-                if act["type"] == "lowgravity" and act["complete"] == False:
-                    if (contains_poly and act["fire_action_once_contained"]) or not act["fire_action_once_contained"]:
-                        bl.body.gravityScale = act["scale"]
-                        act["complete"] = True
+                        sensor = sensor[0]
 
-                # action for switching gravity to normal
-                if act["type"] == "lowgravity" and act["complete"] == "switch":
+                    contains_poly = sensor.does_contain(bl)
 
-                    bl.body.gravityScale = 1
-                    remove_positions.append(i)
+                    # action for switching gravity
+                    if act["type"] == "gravity" and act["complete"] is False:
+                        if (contains_poly and act["fire_action_once_contained"]) or not act[
+                            "fire_action_once_contained"]:
+                            bl.body.gravityScale *= -1
+                            act["complete"] = True
+                            if act["reverse_keys"]:
+                                for k, v in bl.keys.items():
+                                    for act in v:
+                                        try:
+                                            if type(act["extra"]) in [float, int]:
+                                                act["extra"] *= -1
+                                            elif type(act["extra"]) in [list, tuple]:
+                                                act["extra"] = np.array(act["extra"]) * -1
+                                            else:
+                                                pass
+                                        except ValueError:
+                                            # error setting value
+                                            pass
 
-                # splitter sensor action
-                if act["type"] == "splitter" and act["complete"] == False:
-                    if (contains_poly and act["fire_action_once_contained"]) or not act["fire_action_once_contained"]:
-                        if bl.get_poly(4).area > float(act["min_split_area"]):
-                            self.fractal_block(bl, create=False, static=False)
+                    elif act["type"] == "center" and act["complete"] is False:
+                        if (contains_poly and act["fire_action_once_contained"]) or not act[
+                            "fire_action_once_contained"]:
+
+                            bl.center_me = True
+                            bl.death_actions["return_translation"] = act["translation"]
                             if not act["allow_multiple_fires"]:
                                 act["complete"] = True
 
-                # action for shrink,enlarge
-                if act["type"] in ["enlarger", "shrinker"] and act["complete"] == False:
-                    if (contains_poly and act["fire_action_once_contained"]) or not act["fire_action_once_contained"]:
-                        old_shapes = []
-                        for fix in bl.body.fixtures:
-                            if type(fix.shape) is b2PolygonShape:
-                                old_vert = fix.shape.vertices
-                                old_shapes.append(fix.shape.vertices)
-                                new_poly = affinity.scale(Polygon(fix.shape.vertices),
-                                                          act["enlarge_ratio"] if act["type"] == "enlarger" else 1 - act[
-                                                              "shrink_ratio"],
-                                                          act["enlarge_ratio"] if act["type"] == "enlarger" else 1 - act[
-                                                              "shrink_ratio"])
-                                if new_poly.area > convert_to_mks(0.5):
-                                    fix.shape.vertices = list(new_poly.exterior.coords)
-                                area = new_poly.area
-                            else:
-                                old_shapes.append(fix.shape.radius)
-                                fix.shape.radius *= act["enlarge_ratio"] if act["type"] == "enlarger" else 1 - act[
-                                    "shrink_ratio"]
-                                if fix.shape.radius < convert_to_mks(4):
-                                    fix.shape.radius = convert_to_mks(4)
+                    elif act["type"] == "impulse" and act["complete"] is False:
+                        if (contains_poly and act["fire_action_once_contained"]) or not act[
+                            "fire_action_once_contained"]:
 
-                        if not act["allow_multiple_fires"]:
+                            bl.body.ApplyLinearImpulse((np.array(act["vector"]) * bl.body.mass) * 2,
+                                                       bl.body.worldCenter,
+                                                       wake=True)
+                            if not act["allow_multiple_fires"]:
+                                act["complete"] = True
+
+                    elif act["type"] == "force" and act["complete"] is False:
+                        if (contains_poly and act["fire_action_once_contained"]) or not act[
+                            "fire_action_once_contained"]:
+                            bl.body.ApplyForce((np.array(act["vector"]) * bl.body.mass) * 2, bl.body.worldCenter,
+                                               wake=True)
+
+                            if not act["allow_multiple_fires"]:
+                                act["complete"] = True
+
+                    # action for Water
+                    elif act["type"] == "water" and act["complete"] is False:
+
+                        sensor = [bl for bl in self.block_list if bl.id == act["id"]]
+                        if len(sensor) > 0:
+                            sensor = sensor[0]
+                            bl_poly = bl.get_poly(4)
+                            sensor_poly = sensor.get_poly(4)
+                            intersection = sensor_poly.intersection(bl_poly)
+                            if type(intersection) is MultiPolygon:
+                                intersection = intersection.convex_hull
+
+                            int_area = convert_to_mks(intersection.area) / 42.5
+                            if int_area > 0:
+                                int_centroid = convert_to_mks(intersection.centroid.x, intersection.centroid.y)
+                                water_density = bl.body.fixtures[0].density
+                                displaced_mass = water_density * int_area
+                                buoyancy_force = displaced_mass * -np.array(self.gravity)
+
+                                bl.body.ApplyForce(buoyancy_force, int_centroid, wake=True)
+                                coords = list(intersection.exterior.coords)
+
+                                for i in range(len(coords) - 1):
+                                    v0 = b2Vec2(convert_to_mks(coords[i][0], coords[i][1]))
+                                    v1 = b2Vec2(convert_to_mks(coords[i + 1][0], coords[i + 1][1]))
+                                    mid = 0.5 * (v0 + v1)
+                                    velDir = b2Vec2(bl.body.GetLinearVelocityFromWorldPoint(
+                                        mid) - sensor.body.GetLinearVelocityFromWorldPoint(mid))
+                                    vel = velDir.Normalize()
+                                    edge = b2Vec2(v1 - v0)
+                                    edgeLength = b2Vec2(edge).Normalize()
+                                    normal = b2Vec2(b2Cross(-1, edge))
+                                    dragDot = b2Dot(normal, velDir)
+                                    if dragDot > 0:
+                                        dragMag = dragDot * edgeLength * water_density * vel * vel
+                                        dragForce = dragMag * -velDir
+                                        bl.body.ApplyForce(dragForce, mid, wake=True)
+
+                                        # lift for moving objects
+                                        liftDot = b2Dot(edge, velDir);
+                                        liftMag = (dragDot * liftDot) * edgeLength * water_density * vel * vel
+                                        liftDir = b2Vec2(b2Cross(1, velDir))
+                                        liftForce = b2Vec2(liftMag * liftDir)
+                                        bl.body.ApplyForce(liftForce, mid, wake=True);
+
+                                angularDrag = int_area * -bl.body.angularVelocity
+                                bl.body.ApplyTorque(angularDrag, wake=True)
+                        else:
+                            pass
+                    # action for switching gravity to low (almost water like)
+                    elif act["type"] == "lowgravity" and act["complete"] == False:
+                        if (contains_poly and act["fire_action_once_contained"]) or not act[
+                            "fire_action_once_contained"]:
+                            bl.body.gravityScale = act["scale"]
                             act["complete"] = True
-                        if "min_area" in act.keys() and bl.get_poly(4).area < float(act["min_area"]):
-                            self.re_add_size(bl, old_shapes)
-                        if "max_area" in act.keys() and bl.get_poly(4).area > float(act["max_area"]):
-                            self.re_add_size(bl, old_shapes)
 
-                # sensor for switching motor
-                if act["type"] == "motorsw" and act["complete"] == False:
-                    if act["id_to_switch"] == "":
-                        bl_check = bl
-                    else:
-                        bl_check = [bl for bl in self.block_list if bl.id == act["id_to_switch"]][0]
+                    # action for switching gravity to normal
+                    elif act["type"] == "lowgravity" and act["complete"] == "switch":
 
-                    for jn in bl_check.body.joints:
-                        if hasattr(jn.joint, "motorSpeed"):
-                            jn.joint.motorSpeed *= -1
+                        bl.body.gravityScale = 1
+                        remove_positions.append(i)
 
-                    act["complete"] = True
+                    # splitter sensor action
+                    elif act["type"] == "splitter" and act["complete"] == False:
+                        if (contains_poly and act["fire_action_once_contained"]) or not act[
+                            "fire_action_once_contained"]:
+                            if bl.get_area() > float(act["min_split_area"]):
+                                self.fractal_block(bl, create=False, static=False)
+                                if not act["allow_multiple_fires"]:
+                                    act["complete"] = True
+
+                    # action for shrink,enlarge
+                    elif act["type"] in ["enlarger", "shrinker"] and act["complete"] == False:
+                        if (contains_poly and act["fire_action_once_contained"]) or not act[
+                            "fire_action_once_contained"]:
+                            old_shapes = []
+                            for fix in bl.body.fixtures:
+                                if type(fix.shape) is b2PolygonShape:
+                                    old_vert = fix.shape.vertices
+                                    old_shapes.append(fix.shape.vertices)
+                                    new_poly = affinity.scale(Polygon(fix.shape.vertices),
+                                                              act["enlarge_ratio"] if act["type"] == "enlarger" else 1 -
+                                                                                                                     act[
+                                                                                                                         "shrink_ratio"],
+                                                              act["enlarge_ratio"] if act["type"] == "enlarger" else 1 -
+                                                                                                                     act[
+                                                                                                                         "shrink_ratio"])
+                                    if new_poly.area > convert_to_mks(0.5):
+                                        fix.shape.vertices = list(new_poly.exterior.coords)
+                                    area = new_poly.area
+                                else:
+                                    old_shapes.append(fix.shape.radius)
+                                    fix.shape.radius *= act["enlarge_ratio"] if act["type"] == "enlarger" else 1 - act[
+                                        "shrink_ratio"]
+                                    if fix.shape.radius < convert_to_mks(4):
+                                        fix.shape.radius = convert_to_mks(4)
+
+                            if not act["allow_multiple_fires"]:
+                                act["complete"] = True
+                            if "min_area" in act.keys() and bl.get_area() < float(act["min_area"]):
+                                self.re_add_size(bl, old_shapes)
+                            if "max_area" in act.keys() and bl.get_area() > float(act["max_area"]):
+                                self.re_add_size(bl, old_shapes)
+
+                            bl.base_poly = bl.set_base_poly()
+                            bl.base_poly_coords = np.array([np.array(pl.exterior.coords) for pl in bl.base_poly])
+
+                            bl.get_current_pos(force=True)
+
+                    # sensor for switching motor
+                    if act["type"] == "motorsw" and act["complete"] == False:
+                        if act["id_to_switch"] == "":
+                            bl_check = bl
+                        else:
+                            bl_check = [bl for bl in self.block_list if bl.id == act["id_to_switch"]][0]
+
+                        for jn in bl_check.body.joints:
+                            if hasattr(jn.joint, "motorSpeed"):
+                                jn.joint.motorSpeed *= -1
+
+                        act["complete"] = True
 
             # remove not needed actions
             for i in np.arange(len(remove_positions) - 1, -1, -1):
@@ -1573,23 +1750,20 @@ class Physics():
             # get player translation if needed
             block = [bl for bl in self.block_list if bl.center_me]
 
+
             if block != []:
                 block = block[0]
+                # block.set_min_max()
 
-                max_x = max([max([y[0] for y in x]) for x in block.translated_position])
-                max_y = max([max([y[1] for y in x]) for x in block.translated_position])
-                min_x = min([min([y[0] for y in x]) for x in block.translated_position])
-                min_y = min([min([y[1] for y in x]) for x in block.translated_position])
+                if block._min_x < self.board.board.shape[1] * .35:
+                    self.board.translation[0] += int((self.board.board.shape[1] * .35) - block._min_x)
+                elif block._max_x > self.board.board.shape[1] * .65:
+                    self.board.translation[0] -= int(block._max_x - (self.board.board.shape[1] * .65))
 
-                if min_x < self.board.board.shape[1] * .35:
-                    self.board.translation[0] += int((self.board.board.shape[1] * .35) - min_x)
-                elif max_x > self.board.board.shape[1] * .65:
-                    self.board.translation[0] -= int(max_x - (self.board.board.shape[1] * .65))
-
-                if min_y < self.board.board.shape[0] * .35:
-                    self.board.translation[1] += int((self.board.board.shape[0] * .35) - min_y)
-                elif max_y > self.board.board.shape[0] * .65:
-                    self.board.translation[1] -= int(max_y - (self.board.board.shape[0] * .65))
+                if block._min_y < self.board.board.shape[0] * .35:
+                    self.board.translation[1] += int((self.board.board.shape[0] * .35) - block._min_y)
+                elif block._max_y > self.board.board.shape[0] * .65:
+                    self.board.translation[1] -= int(block._max_y - (self.board.board.shape[0] * .65))
 
     def draw_blocks(self, ground_only=False, ground=False):
         """
@@ -1663,11 +1837,13 @@ class Physics():
 
                 try:
                     self.board.board_copy = cv2.line(self.board.board_copy,
-                                                 tuple(np.array([int(x) for x in start]) + self.board.translation),
-                                                 tuple(np.array([int(x) for x in end]) + self.board.translation), col,
-                                                 2)
+                                                     tuple(np.array([int(x) for x in start]) + self.board.translation),
+                                                     tuple(np.array([int(x) for x in end]) + self.board.translation),
+                                                     col,
+                                                     2)
                 except:
                     pass
+
     def create_weld_joint(self, a, b, pos, convert=True):
 
         self.world.CreateWeldJoint(bodyA=a.body,
@@ -1681,22 +1857,47 @@ class Physics():
 
         self.world.joints[-1].userData = {
             "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
+
+        self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+                                                   "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
+                                                   "rotation": a.body.angle,
+                                                   "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2", "")}
+
+        self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+                                                   "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
+                                                   "rotation": b.body.angle,
+                                                   "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2", "")}
+
     def create_rotation_joint(self, a, b, pos, convert=True):
 
-        self.world.CreateRevoluteJoint(bodyA=a.body,
-                                       bodyB=b.body,
-                                       anchor=(convert_to_mks(pos[0], pos[1]) if convert else pos))
-        b.body.active = True
-        b.body.awake = True
-        a.body.active = True
-        a.body.awake = True
+        if not a is b:
+            self.world.CreateRevoluteJoint(bodyA=a.body,
+                                           bodyB=b.body,
+                                           anchor=(convert_to_mks(pos[0], pos[1]) if convert else pos))
+            b.body.active = True
+            b.body.awake = True
+            a.body.active = True
+            a.body.awake = True
 
-        self.world.joints[-1].userData = {
-            "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
-        self.world.joints[-1].userData["old_lower_upper"] = self.world.joints[-1].limits
-        self.world.joints[-1].userData["key"] = None
-        self.world.joints[-1].userData["current_position"] =  self.world.joints[-1].angle
-        self.world.joints[-1].userData["times_allowed"] = 3
+            self.world.joints[-1].userData = {
+                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
+
+            self.world.joints[-1].userData["old_lower_upper"] = self.world.joints[-1].limits
+            self.world.joints[-1].userData["key"] = None
+            self.world.joints[-1].userData["current_position"] = self.world.joints[-1].angle
+            self.world.joints[-1].userData["times_allowed"] = 3
+
+            self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+                                                       "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
+                                                       "rotation": a.body.angle,
+                                                       "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2",
+                                                                                                             "")}
+
+            self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+                                                       "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
+                                                       "rotation": b.body.angle,
+                                                       "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2",
+                                                                                                             "")}
 
     def create_mouse_joint(self, a, x, y):
 
@@ -1719,24 +1920,39 @@ class Physics():
         self.world.joints[-1].userData = {
             "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
 
-    def create_prismatic(self, a, b, vector, anchor, distance,convert=True):
+    def create_prismatic(self, a, b, vector, anchor, distance, convert=True):
 
         if convert:
             anchor = convert_to_mks(anchor[0], anchor[1])
 
-        self.world.CreatePrismaticJoint(bodyA=a.body, bodyB=b.body, anchor=anchor,
-                                        axis=vector, enableLimit=True, upperTranslation=convert_to_mks(distance))
+        if not a.body is b.body:
+            self.world.CreatePrismaticJoint(bodyA=a.body, bodyB=b.body, anchor=anchor,
+                                            axis=vector, enableLimit=True, upperTranslation=convert_to_mks(distance))
 
-        b.body.active = True
-        b.body.awake = True
-        a.body.active = True
-        a.body.awake = True
-        self.world.joints[-1].userData = {
-            "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),"vector":(vector[0],vector[1])}
-        self.world.joints[-1].userData["old_lower_upper"] = self.world.joints[-1].limits
-        self.world.joints[-1].userData["key"] = None
-        self.world.joints[-1].userData["current_position"] =  self.world.joints[-1].translation
-        self.world.joints[-1].userData["times_allowed"] = 3
+            self.world.joints[-1].userData = {
+                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),
+                "vector": (vector[0], vector[1])}
+            self.world.joints[-1].userData["old_lower_upper"] = self.world.joints[-1].limits
+            self.world.joints[-1].userData["key"] = None
+            self.world.joints[-1].userData["current_position"] = self.world.joints[-1].translation
+
+            self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+                                                       "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
+                                                       "rotation": a.body.angle,
+                                                       "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2",
+                                                                                                             "")}
+
+            self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+                                                       "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
+                                                       "rotation": b.body.angle,
+                                                       "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2",
+                                                                                                             "")}
+
+            b.body.active = True
+            b.body.awake = True
+
+            a.body.active = True
+            a.body.awake = True
 
     def create_pulley(self, a, b, lines):
         lines = [convert_to_mks(x[0], x[1]) for x in lines]
@@ -1755,6 +1971,18 @@ class Physics():
         a.body.awake = True
         self.world.joints[-1].userData = {
             "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
+
+        self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+                                                   "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
+                                                   "rotation": a.body.angle,
+                                                   "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2", "")}
+
+        self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+                                                   "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
+                                                   "rotation": b.body.angle,
+                                                   "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2", "")}
+
+
         self.world.joints[-1].userData["old_lower_upper"] = self.world.joints[-1].limits
         self.world.joints[-1].userData["key"] = None
         self.world.joints[-1].userData["times_allowed"] = 3
@@ -1821,10 +2049,25 @@ class Physics():
                                                bodyB=blockB,
                                                anchor=convert_to_mks(line1[0], line1[1]),
                                                collideConnected=False)
-                b.body.active = True
-                b.body.awake = True
-                a.body.active = True
-                a.body.awake = True
+                self.world.joints[-1].userData = {
+                    "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
+
+                self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+                                                           "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
+                                                           "rotation": a.body.angle,
+                                                           "anchorA": str(self.world.joints[-1].anchorA).replace(
+                                                               "b2Vec2", "")}
+
+                self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+                                                           "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
+                                                           "rotation": b.body.angle,
+                                                           "anchorB": str(self.world.joints[-1].anchorB).replace(
+                                                               "b2Vec2", "")}
+
+                blockB.active = True
+                blockB.awake = True
+                blockA.active = True
+                blockA.awake = True
                 # self.world.CreateDistanceJoint(bodyA=blockA,
                 # bodyB=blockB,
                 # anchorA=convert_to_mks(center_point[0], center_point[1]),
@@ -1877,10 +2120,26 @@ class Physics():
                                            bodyB=blockB,
                                            anchor=((blockA.worldCenter.x + blockB.worldCenter.x) / 2,
                                                    (blockA.worldCenter.y + blockB.worldCenter.y) / 2))
-            b.body.active = True
-            b.body.awake = True
-            a.body.active = True
-            a.body.awake = True
+            self.world.joints[-1].userData = {
+                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
+
+            self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+                                                       "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
+                                                       "rotation": a.body.angle,
+                                                       "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2",
+                                                                                                             "")}
+
+            self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+                                                       "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
+                                                       "rotation": b.body.angle,
+                                                       "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2",
+                                                                                                             "")}
+
+            blockB.active = True
+            blockB.awake = True
+            blockA.active = True
+            blockA.awake = True
+
             if end:
                 return
 
@@ -1930,11 +2189,25 @@ class Physics():
                                            anchorB=blockB.worldCenter if i != len(lines_new) - 2 else convert_to_mks(
                                                lines[-1][0], lines[-1][1]),
                                            collideConnected=False)
-            b.body.active = True
-            b.body.awake = True
-            a.body.active = True
-            a.body.awake = True
+            self.world.joints[-1].userData = {
+                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
 
+            self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+                                                       "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
+                                                       "rotation": a.body.angle,
+                                                       "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2",
+                                                                                                             "")}
+
+            self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+                                                       "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
+                                                       "rotation": b.body.angle,
+                                                       "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2",
+                                                                                                             "")}
+
+            blockB.active = True
+            blockB.awake = True
+            blockA.active = True
+            blockA.awake = True
             self.world.joints[-1].frequency = 50000
             self.world.joints[-1].frequencyHz = 50000
             self.world.joints[-1].dampingRatio = 0
@@ -1947,15 +2220,27 @@ class Physics():
         if convert:
             aAnchor = convert_to_mks(aAnchor[0], aAnchor[1])
             bAnchor = convert_to_mks(bAnchor[0], bAnchor[1])
+        if not a is b:
+            self.world.CreateDistanceJoint(bodyA=a.body,
+                                           bodyB=b.body,
+                                           anchorA=aAnchor,
+                                           anchorB=bAnchor,
+                                           collideConnected=True)
 
-        self.world.CreateDistanceJoint(bodyA=a.body,
-                                       bodyB=b.body,
-                                       anchorA=aAnchor,
-                                       anchorB=bAnchor,
-                                       collideConnected=True)
+            self.world.joints[-1].userData = {
+                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
 
-        self.world.joints[-1].userData = {
-            "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
+            self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+                                                       "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
+                                                       "rotation": a.body.angle,
+                                                       "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2",
+                                                                                                             "")}
+
+            self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+                                                       "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
+                                                       "rotation": b.body.angle,
+                                                       "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2",
+                                                                                                             "")}
 
     def create_rope_joint(self, a, b, aAnchor, bAnchor, maxLength, convert=True):
 
@@ -1963,51 +2248,77 @@ class Physics():
             maxLength = convert_to_mks(maxLength)
             aAnchor = convert_to_mks(aAnchor[0], aAnchor[1])
             bAnchor = convert_to_mks(bAnchor[0], bAnchor[1])
+        if not a is b:
+            self.world.CreateRopeJoint(bodyA=a.body,
+                                       bodyB=b.body,
+                                       anchorA=aAnchor,
+                                       anchorB=bAnchor,
+                                       maxLength=maxLength,
+                                       collideConnected=True)
 
-        self.world.CreateRopeJoint(bodyA=a.body,
-                                   bodyB=b.body,
-                                   anchorA=aAnchor,
-                                   anchorB=bAnchor,
-                                   maxLength=maxLength,
-                                   collideConnected=True)
+            self.world.joints[-1].userData = {
+                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
 
-        self.world.joints[-1].userData = {
-            "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))}
+            self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+                                                       "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
+                                                       "rotation": a.body.angle,
+                                                       "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2",
+                                                                                                             "")}
 
+            self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+                                                       "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
+                                                       "rotation": b.body.angle,
+                                                       "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2",
+                                                                                                             "")}
+
+        else:
+            print("Can't be the same object.")
     def delete(self, bl):
-        # destroy joints
 
-        for k,v in bl.death_actions.items():
-            if k == "return_translation":
-                trans = [x.replace("[","").replace("]","").replace(",","") for x in v.split(" ")]
-                self.board.translation = [int(x) for x in trans if x != ""]
+        if not type(bl) is list:
+            bl = [bl]
 
-        for i, joint in enumerate(bl.body.joints):
+        index_bl = []
+        for i in list(range(len(bl) - 1, -1, -1)):
+            b = bl[i]
 
-            self.world.DestroyJoint(joint.joint)
-            try:
-                self.world.DestroyJoint(joint)
-            except:
-                pass
+            b.body.alive = False
+            b.body.active = False
+            b.body.asleep = True
 
-            del joint
+            for k, v in b.death_actions.items():
+                if k == "return_translation":
+                    if type(v) is str:
+                        trans = [x.replace("[", "").replace("]", "").replace(",", "") for x in v.split(" ")]
+                    else:
+                        trans = np.array(v)
+                    self.board.translation = np.array([int(x) for x in trans if x != ""])
+
+            # destroy bodies
+            block = self.block_list.pop(self.block_list.index(b))
+            del block
             gc.collect(0)
 
-        # destroy bodies
+            if not self.draw.player_list == []:
+                if b in self.draw.player_list:
+                    del self.draw.player_list[self.draw.player_list.index(b)]
 
-        del self.block_list[self.block_list.index(bl)]
+            gc.collect(0)
 
-        # remove from the keys move list if found.
+            # self.world.bodies.remove(bl.body)
 
-        self.world.DestroyBody(bl.body)
+            b.body.userData.clear()
+            for joint in b.body.joints:
+                joint.joint.userData.clear()
 
-        if not self.draw.player_list == []:
-            if bl in self.draw.player_list:
-                del self.draw.player_list[self.draw.player_list.index(bl)]
+            gc.collect(0)
+            index_bl.append(self.world.bodies.index(b.body))
+            del b
 
-        del bl
-
+        index_bl = index_bl[::-1]
         gc.collect(0)
+        [self.world.DestroyBody(self.world.bodies[ind]) for ind in index_bl]
+        #gc.collect(0)
 
     def check_off(self):
         """
@@ -2021,7 +2332,6 @@ class Physics():
             bl = self.block_list[i]
             if bl.body.userData["kill"]:
                 self.delete(bl)
-
         # old code now uses boundries
         # goals = 0
         # h, w, _ = board.board_copy.shape
@@ -2059,21 +2369,28 @@ class Physics():
 
 class _Base_Block():
 
-    def __init__(self, body, static_shape=False, set_sprite=False, sprite=None, draw_static=True, poly_type=None):
+    def __init__(self, body, static_shape=False, set_sprite=False, sprite=None, draw_static=True, poly_type=None,
+                 board=None):
         self.body = body
+        self.board = board
         self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False, "actions": [],
                               "player_allow_impulse": True, "bullet_actions": None, "bullets_destory_ground": False,
-                              "kill": False, "ground_touches": 0, "sensor_touch_id": []}
+                              "kill": False, "ground_touches": 0, "sensor_touch_id": [], "forced_pos": []}
         self.type = poly_type
 
         self.static = static_shape
-        self.board = None
 
         self.center = None
         self.poly = None
+
+        self.base_poly = self.set_base_poly()
+        self.base_poly_coords = np.array([np.array(coords.exterior.coords) for coords in self.base_poly])
+
         self.pos = None
         self.current_position = []
         self.translated_position = []
+
+        self.active = True
 
         self.force_draw = True
 
@@ -2087,6 +2404,9 @@ class _Base_Block():
 
         self.centroid = None
 
+        self.cur_pos = []
+        self.forced_pos = []
+
         self.sprite = sprite
         self.mask = None
         self.inv_mask = None
@@ -2098,9 +2418,12 @@ class _Base_Block():
         self.can_fire = False
         self.is_player = False
         self.is_onscreen = True
+        self.is_onscreen_times = 0
         self.onscreen_status = {"force_awake": False, "force_alive": False}
-
+        self.translation_speed = 1
         self.death_actions = {}
+        self.draw_position = 0
+        self.get_current_pos(True)
 
         if set_sprite:
             self.set_sprite()
@@ -2129,10 +2452,22 @@ class _Base_Block():
     def set_mass(self):
 
         density = sum([fix.density for fix in self.body.fixtures])
-        poly = self.get_poly(4)
-        self.body.mass = convert_to_mks(poly.area) / 45 * density
+        try:
+            self.body.mass = sum([convert_to_mks(ar.area) for ar in self.base_poly]) * 45 * density
+        except:
+            self.body.ResetMassData()
 
-    def add_move(self, key, type, extra,id=None):
+    def does_contain(self,other_block):
+        multi = MultiPolygon([Polygon(pos) for pos in self.current_position])
+        multi_other= MultiPolygon([Polygon(pos) for pos in other_block.current_position])
+        return multi.contains(multi_other)
+
+    def get_area(self):
+        multi = MultiPolygon([Polygon(pos) for pos in self.current_position])
+        return multi.area
+
+
+    def add_move(self, key, type, extra, id=None):
         """
         Used to add keys and actions to be fired on keypress
 
@@ -2142,17 +2477,41 @@ class _Base_Block():
         :param extra:
         :return:
         """
+        if id is None:
+            id = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15))
 
         if key in self.keys:
             self.keys[key].append(
                 {"type": type, "extra": extra, "multiplier": 1, "limit_x_speed": False, "limit_y_speed": False,
-                 "enforce_ground_touch": False, "toggle_allowed": False, "toggle_status": False,"cancel_rotation":False,"cancel_velocity":False,
-                 "hold_motor_in_place":False, "id": id})
+                 "enforce_ground_touch": False, "toggle_allowed": False, "toggle_status": False,
+                 "cancel_rotation": False, "cancel_velocity": False,
+                 "hold_motor_in_place": False, "id": id})
         else:
             self.keys[key] = [
                 {"type": type, "extra": extra, "multiplier": 1, "limit_x_speed": False, "limit_y_speed": False,
-                 "enforce_ground_touch": False, "toggle_allowed": False, "toggle_status": False, "cancel_rotation":False,"cancel_velocity":False,
-                  "hold_motor_in_place":False, "id": id}]
+                 "enforce_ground_touch": False, "toggle_allowed": False, "toggle_status": False,
+                 "cancel_rotation": False, "cancel_velocity": False,
+                 "hold_motor_in_place": False, "id": id}]
+
+    def set_base_poly(self, rad=5):
+
+        # if static block or terrain then poly is already set as un moveable.
+        # if not self.poly is None:
+        #    return self.poly
+
+        polys = []
+        for fix in self.body.fixtures:
+            if type(fix.shape) == b2PolygonShape:
+                polys.append(Polygon(fix.shape.vertices))
+            elif type(fix.shape) == b2CircleShape:
+                # if circle get poly
+                polygon = Point(fix.shape.pos[0], fix.shape.pos[1])
+                rad = 7
+                polys.append(polygon.buffer(fix.shape.radius, rad))
+            else:
+                pass
+
+        return polys
 
     def get_poly(self, rad=5):
 
@@ -2160,24 +2519,7 @@ class _Base_Block():
         # if not self.poly is None:
         #    return self.poly
 
-        polys = []
-        for fix, pos in zip(self.body.fixtures, self.current_position):
-            if type(fix.shape) == b2PolygonShape:
-                polys.append(Polygon(pos))
-            elif type(fix.shape) == b2CircleShape:
-                # if circle get poly
-                pos = pos.squeeze()
-                polygon = Point(pos[0], pos[1])
-                rad = 5
-                polys.append(polygon.buffer(convert_from_mks(fix.shape.radius), rad))
-            else:
-                pass
-
-        poly = unary_union(polys)
-        if not type(poly) == Polygon:
-            poly = poly.convex_hull
-
-        return poly
+        return MultiPolygon([Polygon(pos) for pos in self.current_position])
 
     def set_as_bullet(self, vector, id, destroy_ground):
         self.sensor["type"] = "bullet"
@@ -2198,69 +2540,63 @@ class _Base_Block():
         # stop rotation
         self.body.fixedRotation = True
 
-    def get_current_pos(self):
+    def set_min_mix(self):
+        #set min max top check off screen position etc
+        stack_positions = self.stack_positions()
+        self._max_x, self._max_y = np.round(np.max(stack_positions, axis=0)).astype(int)
+        self._min_x, self._min_y = np.round(np.min(stack_positions, axis=0)).astype(int)
 
-        self.translated_position = []
-        self.current_position = []
-        poly = []
-        for i, fix in enumerate(self.body.fixtures):
-            if type(fix.shape) == b2PolygonShape:
-                shapes = [(self.body.transform * v) for v in fix.shape.vertices]
-                shapes = [(convert_from_mks(val[0], val[1])) for val in shapes]
-                self.translated_position.append(np.array(shapes) + self.board.translation)
-                self.current_position.append(np.array(shapes))
-                self.poly = Polygon(self.translated_position[i])
-                self.centroid = (self.poly.centroid.x, self.poly.centroid.y)
+    def get_current_pos(self, force=False):
+
+        if (self.is_onscreen_times == 0 and (
+                sum([self.body.awake, self.body.active]) != 0) or self.translation_speed != 1) or force:
+
+            if self.type > 0 or self.current_position == [] or force:
+                self.current_position = np.array([np.array([convert_from_mks(self.body.transform * pos) for pos in coords]) for coords in self.base_poly_coords])
+
+            #self.translated_position = self.current_position + (self.board.translation * self.translation_speed)
+            self.translated_position = [pos + (self.board.translation * self.translation_speed) for pos in self.current_position]
+            self.center = convert_from_mks((self.body.transform * self.body.localCenter))
+            self.centroid = self.center + (self.board.translation * self.translation_speed)
+
+            # on screen?
+            self.set_min_mix()
+
+            if self._max_x < 0 or self._min_y > self.board.board.shape[0]:
+                self.is_onscreen = False
+                self.is_onscreen_times = 5
+            elif self._max_y < 0 or self._min_x > self.board.board.shape[1]:
+                self.is_onscreen = False
+                self.is_onscreen_times = 5
             else:
-                # for circles add center
-                shape = self.body.transform * fix.shape.pos
-                shape = [convert_from_mks(shape[0], shape[1])]
-                self.translated_position.append(np.array(shape) + self.board.translation)
-                self.current_position.append(np.array(shape))
-                self.poly = Polygon(np.array(self.get_poly(3).exterior.coords) + self.board.translation)
-                self.centroid = self.translated_position[0].squeeze()
-
-        center = (self.body.transform * self.body.localCenter)
-        self.center = convert_from_mks(center.x, center.y)
-
-        # on screen?
-        if max([max([y[0] for y in x]) if len(x) != 2 else x[0] for x in self.translated_position]) < 0 or min(
-                [min([y[0] for y in x]) if len(x) != 2 else x[0] for x in self.translated_position]) > \
-                self.board.board.shape[1]:
-            self.is_onscreen = False
-        elif max([max([y[1] for y in x]) if len(x) != 2 else x[0] for x in self.translated_position]) < 0 or min(
-                [min([y[1] for y in x]) if len(x) != 2 else x[0] for x in self.translated_position]) > \
-                self.board.board.shape[0]:
-            self.is_onscreen = False
+                self.is_onscreen = True
+                self.is_onscreen_times = 0
         else:
-            self.is_onscreen = True
+            self.is_onscreen_times -= 1
+    def stack_positions(self):
+        stacked_pos = None
+        for val in self.translated_position:
+            if stacked_pos is None:
+                stacked_pos = val
+            else:
+                stacked_pos = np.vstack([stacked_pos, val])
+        return stacked_pos
 
     def set_height_width(self):
-        coords = list(self.get_poly(4).exterior.coords)
-        widthMax = max([x[0] for x in coords])
-        widthMin = min([x[0] for x in coords])
-        heightMax = max([x[1] for x in coords])
-        heightMin = min([x[1] for x in coords])
-        self.height = heightMax - heightMin
-        self.width = widthMax - widthMin
+
+        self.height = self._max_y - self._min_y
+        self.width = self._max_x - self._min_x
 
     def set_sprite(self, force=False):
         if not self.sprite is None:
             try:
                 img = cv2.imread(self.sprite, -1)
-                if random.randint(1, 2) == 1:
-                    img = img[:, ::-1]
+                # if random.randint(1, 2) == 1:
+                #    img = img[:, ::-1]
 
                 if not force:
-                    coords = list(self.get_poly(4).exterior.coords)
-                    widthMax = max([x[0] for x in coords])
-                    widthMin = min([x[0] for x in coords])
-                    heightMax = max([x[1] for x in coords])
-                    heightMin = min([x[1] for x in coords])
-                    self.height = heightMax - heightMin
-                    self.width = widthMax - widthMin
-
-                    self.sprite = cv2.resize(img, (int(self.width), int(self.height)))
+                    self.set_height_width()
+                    self.sprite = cv2.resize(img, (int(self.width), int(self.height)),interpolation=cv2.INTER_LANCZOS4)
 
                 if self.sprite.shape[2] == 4:
                     mask = self.sprite[:, :, 3] / 255
@@ -2279,7 +2615,7 @@ class _Base_Block():
         if self.is_onscreen:
             if self.sprite_on and type(self.sprite) != None:
 
-                center = self.centroid
+                # center = self.centroid
 
                 degrees = np.rad2deg(self.body.angle * -1)
 
@@ -2294,11 +2630,11 @@ class _Base_Block():
                     mask = self.mask.copy()
 
                 # get shape
-                height, width, _ = sprite.shape
-                x_start = int(center[0] - (width / 2))
-                y_start = int(center[1] - (height / 2))
-                x_end = int(x_start + (width))
-                y_end = int(y_start + (height))
+
+                x_start = self._min_x
+                y_start = self._min_y
+                x_end = self._max_x
+                y_end = self._max_y
 
                 # if out of bounds return not drawn
                 if y_start > self.board.board_copy.shape[0] or x_start > self.board.board_copy.shape[
@@ -2329,6 +2665,21 @@ class _Base_Block():
                     mask = mask[:, :sprite.shape[1]]
                     x_end = self.board.board_copy.shape[1]
 
+                board_shape = self.board.board_copy[y_start:y_end, x_start:x_end, :].shape
+                img_shape = sprite.shape
+
+                while board_shape != img_shape:
+                    if board_shape[0] < img_shape[0] or board_shape[1] < img_shape[1]:
+                        sprite = sprite[:board_shape[0], :board_shape[1], :]
+                        mask = mask[:board_shape[0], :board_shape[1], :]
+
+                    if board_shape[0] > img_shape[0] or board_shape[1] > img_shape[1]:
+                        x_end -= board_shape[1] - img_shape[1]
+                        y_end -= board_shape[0] - img_shape[0]
+
+                    img_shape = sprite.shape
+                    board_shape = self.board.board_copy[y_start:y_end, x_start:x_end, :].shape
+
                 self.board.board_copy[y_start:y_end, x_start:x_end, :] = (self.board.board_copy[y_start:y_end,
                                                                           x_start:x_end,
                                                                           :] * (1 - mask)) + sprite
@@ -2338,24 +2689,29 @@ class _Base_Block():
                     colour = self.colour
                 else:
                     colour = self.board.palette.current_palette[self.colour]
-                for pos, fix in zip(self.translated_position, self.body.fixtures):
-                    if type(fix.shape) == b2PolygonShape:
-                        self.board.board_copy = cv2.fillConvexPoly(self.board.board_copy, pos.astype(np.int32), colour)
-                    else:
-                        self.board.board_copy = cv2.circle(self.board.board_copy,
-                                                           tuple([int(x) for x in pos.squeeze()]),
-                                                           int(convert_from_mks(fix.shape.radius)),
-                                                           colour,
-                                                           thickness=-1)
+                for pos in self.translated_position:
+                    self.board.board_copy = cv2.fillConvexPoly(self.board.board_copy, pos.astype(int),
+                                                               colour)
+
+                # for pos, fix in zip(self.translated_position, self.body.fixtures):
+                #     if type(fix.shape) == b2PolygonShape:
+                #         self.board.board_copy = cv2.fillConvexPoly(self.board.board_copy, pos.astype(np.int32), colour)
+                #     else:
+                #         self.board.board_copy = cv2.circle(self.board.board_copy,
+                #                                            tuple([int(x) for x in pos.squeeze()]),
+                #                                            int(convert_from_mks(fix.shape.radius)),
+                #                                            colour,
+                #                                            thickness=-1)
 
         return self.board
 
 
 class Block(_Base_Block):
 
-    def __init__(self, body, static_shape=False, set_sprite=False, sprite=None, draw_static=True, poly_type=None):
+    def __init__(self, body, static_shape=False, set_sprite=False, sprite=None, draw_static=True, poly_type=None,
+                 board=None):
         super().__init__(body, static_shape=static_shape, set_sprite=set_sprite, sprite=sprite, draw_static=draw_static,
-                         poly_type=poly_type)
+                         poly_type=poly_type, board=board)
 
 
 class Board():
@@ -2555,21 +2911,29 @@ class Messenger:
 
 class Contacter(b2ContactListener):
 
-    def __init__(self):
+    def __init__(self, world):
         b2ContactListener.__init__(self)
+        self.world = world
 
     def get_sensor_block(self, contact):
 
         # check if objects have the correct user data
-        if "ob" in contact.fixtureA.body.userData.keys():
-            blockA = contact.fixtureA.body.userData["ob"]
-        else:
-            return None, None
 
-        if "ob" in contact.fixtureB.body.userData.keys():
-            blockB = contact.fixtureB.body.userData["ob"]
-        else:
-            return None, None
+        idd = id(contact.fixtureA.body)
+
+        if id(contact.fixtureA.body) in [id(bod) for bod in self.world.bodies]:
+
+            if "ob" in contact.fixtureA.body.userData.keys():
+
+                blockA = contact.fixtureA.body.userData["ob"]
+            else:
+                return None, None
+
+        if id(contact.fixtureB.body) in [id(bod) for bod in self.world.bodies]:
+            if "ob" in contact.fixtureB.body.userData.keys():
+                blockB = contact.fixtureB.body.userData["ob"]
+            else:
+                return None, None
 
         sensor = None
         block = None
@@ -2731,7 +3095,7 @@ class Contacter(b2ContactListener):
         # check if bullet
         if sensor.sensor["type"] == "bullet" and sensor.sensor["data"] != block.id:
             # destroy bullets on hitting object with a mass > 200 else let it keep moving
-            if block.get_poly().area > 200:
+            if block.get_area() > 200:
                 sensor.body.userData["bullet_actions"] = "kill"
 
             # kill blocks if hit by bullet and not static unless the options allow it
@@ -2748,6 +3112,7 @@ class Contacter(b2ContactListener):
     def EndContact(self, contact):
 
         sensor, block = self.get_sensor_block(contact)
+
         if sensor is None or block is None:
             return
 
@@ -2767,7 +3132,7 @@ class Contacter(b2ContactListener):
         try:
             # check if gravity
             if sensor.sensor["type"] in ["impulse", "force", "gravity", "motorsw", "enlarger", "shrinker", "splitter",
-                                         "sticky", "water","center"]:
+                                         "sticky", "water", "center"]:
                 self.remove_action(sensor, block)
 
             # check if water leave
@@ -2794,3 +3159,19 @@ class Contacter(b2ContactListener):
                 rem_id = i
         if not rem_id is None:
             del block.body.userData["actions"][rem_id]
+
+
+class MyContactFilter(b2ContactFilter):
+    def __init__(self):
+        b2ContactFilter.__init__(self)
+
+    def ShouldCollide(self, shape1, shape2):
+        # Implements the default behavior of b2ContactFilter in Python
+        filter1 = shape1.filterData
+        filter2 = shape2.filterData
+        if filter1.groupIndex == filter2.groupIndex and filter1.groupIndex == filter2.groupIndex != 0:
+            return False
+        else:
+            return True
+
+        return collides
