@@ -417,3 +417,4 @@ def rotate(points, center, angle):
     m = cv2.getRotationMatrix2D((cx, cy), angle, 1)
 
     return cv2.transform(points, m, None).astype(np.int32)
+

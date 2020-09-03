@@ -2,7 +2,7 @@ from enum import Enum
 from shapely.geometry import Polygon
 from functions import calculateDistance
 import numpy as np
-
+from math import cos,sin,tan
 
 
 class SelectType(Enum):
@@ -28,6 +28,48 @@ class SelectType(Enum):
     null = "-1"
     line_join2 = "18"
     select_or_click = "19"
+
+def rotate_point(origin, point, angle):
+    """
+    Rotate a point counterclockwise by a given angle around a given origin.
+
+    The angle should be given in radians.
+    """
+    ox, oy = origin
+    px, py = point
+
+    qx = ox + cos(angle) * (px - ox) - sin(angle) * (py - oy)
+    qy = oy + sin(angle) * (px - ox) + cos(angle) * (py - oy)
+    return qx, qy
+
+def createRectangle(x, y, w, h):
+    xmin = int(x)
+    xmax = int(x) + int(w)
+    ymin = int(y)
+    ymax = int(y) + int(h)
+    lst_pnts = []
+    lst_pnts.append((xmin, ymin))
+    lst_pnts.append((xmin, ymax))
+    lst_pnts.append((xmax, ymax))
+    lst_pnts.append((xmax, ymin))
+    return np.array(lst_pnts)
+
+
+def enlarge_image(img):
+    h, w, _ = img.shape
+
+    ma = np.max(img.shape)
+    back = np.zeros((int(ma*1.4), int(ma*1.4), img.shape[2]))
+    print(back.shape)
+    hh, ww, _ = back.shape
+
+    yoff = round((hh-h)/2)
+    xoff = round((ww-w)/2)
+
+    result = back.copy()
+    result[yoff:yoff+h, xoff:xoff+w] = img
+    return result
+
 #
 # def rotation(draw,phys,event,x,y,type):
 #     if type[1:] == SelectType.line_join.value:

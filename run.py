@@ -459,7 +459,7 @@ if __name__ == "__main__":
         # draw physics
         phys.draw_blocks()
 
-        # draw front of board
+        # draw front of boardgg
         board.draw_front()
 
         # draw joints

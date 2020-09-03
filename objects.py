@@ -9,16 +9,18 @@ import sys
 import copy
 from sect.triangulation import constrained_delaunay_triangles
 
-from scipy.ndimage import rotate
+
 from shapely.geometry import Polygon, LineString, Point, MultiPolygon
 from shapely.ops import unary_union, cascaded_union
 from shapely.affinity import rotate as rt
 from shapely import affinity
 
-from draw_functions import get_enlongated_line, get_poly_from_two_rectangle_points
+from draw_functions import get_enlongated_line, get_poly_from_two_rectangle_points,createRectangle,enlarge_image,rotate_point
 from functions import get_config, convert_to_mks, convert_from_mks, dent_contour, fragment_poly, calculateDistance, \
     get_angle, rotate_around_point_highperf, get_centroid
 
+#from scipy.ndimage import rotate
+from skimage.transform import rotate
 import gc
 
 from Box2D import *
@@ -719,7 +721,10 @@ class Physics():
 
         # get main block information
 
-        block_dic = {k: v for k, v in block.__dict__.items() if not "b2" in str(type(v))}
+        block_dic = {k: v.copy() if hasattr(v,"copy") else v for k, v in block.__dict__.items() if not "b2" in str(type(v))}
+        for k, v in block.__dict__.items():
+            if "b2Vec" in str(type(v)):
+                block_dic[k] = (v.x,v.y)
 
         #fixed issue with a strong ref to the object
         block_dic["keys"] = copy.copy(block_dic["keys"])
@@ -913,13 +918,9 @@ class Physics():
             # reseize sprite
 
             if not block.sprite is None:
+                block.set_min_mix(True)
                 block.set_height_width()
-
-                if block_info["block"]["type"] in [-1, 1, 3]:
-                    block.sprite = cv2.resize(block.sprite, dsize=(int(block.width), int(block.height)),interpolation=cv2.INTER_LANCZOS4)
-                    block.mask = cv2.resize(block.mask, dsize=(int(block.width), int(block.height)),interpolation=cv2.INTER_LANCZOS4)
-                    block.inv_mask = cv2.resize(block.inv_mask, dsize=(int(block.width), int(block.height)),interpolation=cv2.INTER_LANCZOS4)
-
+                block.sprite = cv2.resize(block.sprite, dsize=(int(block.width), int(block.height)),interpolation=cv2.INTER_LANCZOS4)
             # not needed any more!!
             # if block.sprite_on and not type(block.sprite) is None:
             #     block.set_sprite(force=True)
@@ -978,7 +979,7 @@ class Physics():
             block.get_current_pos(True)
             block.body.active = block_info["body"]["active"]
             block.body.awake = block_info["body"]["awake"]
-
+            block.set_position(force=True)
             for i,fix in enumerate(block.body.fixtures):
                 if "groupIndex" in block_info["fixtures"][i].keys():
                     fix.filterData.groupIndex = block_info["fixtures"][i]["groupIndex"]
@@ -2406,10 +2407,11 @@ class _Base_Block():
 
         self.cur_pos = []
         self.forced_pos = []
-
+        self._position = None
+        self.position = None
+        self._base_line = None
         self.sprite = sprite
         self.mask = None
-        self.inv_mask = None
         self.sprite_on = False
         self.is_player = False
         self.center_me = False
@@ -2424,7 +2426,10 @@ class _Base_Block():
         self.death_actions = {}
         self.draw_position = 0
         self.get_current_pos(True)
+        self.set_min_mix()
+        self.set_height_width()
 
+        self.degs = None
         if set_sprite:
             self.set_sprite()
 
@@ -2540,9 +2545,9 @@ class _Base_Block():
         # stop rotation
         self.body.fixedRotation = True
 
-    def set_min_mix(self):
+    def set_min_mix(self,base=False):
         #set min max top check off screen position etc
-        stack_positions = self.stack_positions()
+        stack_positions = self.stack_positions(base)
         self._max_x, self._max_y = np.round(np.max(stack_positions, axis=0)).astype(int)
         self._min_x, self._min_y = np.round(np.min(stack_positions, axis=0)).astype(int)
 
@@ -2555,12 +2560,18 @@ class _Base_Block():
                 self.current_position = np.array([np.array([convert_from_mks(self.body.transform * pos) for pos in coords]) for coords in self.base_poly_coords])
 
             #self.translated_position = self.current_position + (self.board.translation * self.translation_speed)
+
+            #get translated soords
             self.translated_position = [pos + (self.board.translation * self.translation_speed) for pos in self.current_position]
-            self.center = convert_from_mks((self.body.transform * self.body.localCenter))
-            self.centroid = self.center + (self.board.translation * self.translation_speed)
 
             # on screen?
             self.set_min_mix()
+            #get center positon
+            if self.sprite_on:
+                self.set_position()
+
+            self.center = convert_from_mks((self.body.transform * self.body.localCenter))
+            self.centroid = self.center + (self.board.translation * self.translation_speed)
 
             if self._max_x < 0 or self._min_y > self.board.board.shape[0]:
                 self.is_onscreen = False
@@ -2573,9 +2584,14 @@ class _Base_Block():
                 self.is_onscreen_times = 0
         else:
             self.is_onscreen_times -= 1
-    def stack_positions(self):
+
+    def stack_positions(self, base=False):
         stacked_pos = None
-        for val in self.translated_position:
+        if base:
+            pos = [convert_from_mks(y) for y in [x for x in self.base_poly_coords]]
+        else:
+            pos = self.translated_position
+        for val in pos:
             if stacked_pos is None:
                 stacked_pos = val
             else:
@@ -2587,103 +2603,135 @@ class _Base_Block():
         self.height = self._max_y - self._min_y
         self.width = self._max_x - self._min_x
 
-    def set_sprite(self, force=False):
-        if not self.sprite is None:
+    def set_position(self,force=False):
+
+        if self._base_line is None or force:
+            if force:
+                self.set_min_mix()
+            _poly_center_position = np.array((self._min_x + ((self._max_x-self._min_x)/2), self._min_y + ((self._max_y-self._min_y) /2)))
+            _init_pos = convert_from_mks(self.body.position) + (self.board.translation * self.translation_speed)
+            if type(_init_pos) == np.ndarray:
+                self._base_line = (_init_pos,_poly_center_position)
+            else:
+                self._base_line = ((_init_pos.x, _init_pos.y), _poly_center_position)
+            self.position = _poly_center_position.astype(int)
+
+        else:
+            rotated = np.array(rotate_point(self._base_line[0],self._base_line[1],self.body.angle))
+            diff = (convert_from_mks(self.body.position)+ (self.board.translation * self.translation_speed)) - self._base_line[0]
+            rotated += diff
+            self.position = np.array(rotated).astype(int)
+
+    def set_sprite(self, force=False,reset=False):
+        if not self.sprite is None or reset:
             try:
-                img = cv2.imread(self.sprite, -1)
+                if not reset:
+                    img = cv2.imread(self.sprite, -1)
+                else:
+                    img = self.sprite
                 # if random.randint(1, 2) == 1:
                 #    img = img[:, ::-1]
 
-                if not force:
-                    self.set_height_width()
-                    self.sprite = cv2.resize(img, (int(self.width), int(self.height)),interpolation=cv2.INTER_LANCZOS4)
+                if not force or reset:
+                    sprite = cv2.resize(img, (int(self.width), int(self.height)),interpolation=cv2.INTER_LANCZOS4)
+                    #sprite = enlarge_image(sprite)
 
-                if self.sprite.shape[2] == 4:
-                    mask = self.sprite[:, :, 3] / 255
-                    self.mask = np.stack([mask, mask, mask]).transpose([1, 2, 0])
-                    self.sprite = self.sprite[:, :, :3][:, :, ::-1]
-                else:
-                    self.mask = np.ones(self.sprite.shape)
+                    if sprite.shape[2] != 4:
+                    #     mask = (sprite[:, :, 3] / 255)
+                    #     self.mask = np.stack([mask, mask, mask]).transpose([1, 2, 0])
+                    # else:
+                        self.sprite = np.concatenate([sprite[:,:,:3][:,:,::-1],np.ones(sprite.shape)[:,:,:3]],axis=-1)
+                    else:
+                        self.sprite = np.concatenate([sprite[:,:,:3][:,:,::-1],np.dstack([sprite[:,:,3]]*3)/255],axis=-1)
 
-                self.inv_mask = 1 - self.mask.copy()
                 self.sprite_on = True
             except:
                 print("Error reading sprite image file")
 
+    def getAABB(self):
+        aabb = None
+        for fix in self.body.fixtures:
+            if aabb == None:
+                aabb = fix.GetAABB(0)
+            else:
+                aabb = fix.GetAABB(0).Combine(aabb)
+        return aabb
+
     def draw(self, force_draw=True):
 
         if self.is_onscreen:
+
             if self.sprite_on and type(self.sprite) != None:
 
                 # center = self.centroid
 
                 degrees = np.rad2deg(self.body.angle * -1)
 
-                if degrees != 0:
-                    sprite = rotate(self.sprite.copy().astype(np.uint8), int(degrees), reshape=True)
-                    mask = rotate(self.mask.copy(), int(degrees), reshape=True, mode="constant", cval=0)
+                if self.sprite.shape[2] <= 4:
+                    self.set_sprite(reset=True)
 
-                    sprite = sprite * mask
+                if degrees != 0:
+                    if self.degs == None or self.degs != degrees:
+                        #mask_rot = rotate(self.mask.copy(), degrees, reshape=True, mode='constant', cval=0.0)
+                        rotated = rotate(self.sprite, degrees, resize=True, mode='constant', cval=0.0)
+
 
                 else:
-                    sprite = self.sprite.copy()
-                    mask = self.mask.copy()
+                    rotated = self.sprite.astype(np.uint8)
 
-                # get shape
 
-                x_start = self._min_x
-                y_start = self._min_y
-                x_end = self._max_x
-                y_end = self._max_y
+                pos = self.position
 
-                # if out of bounds return not drawn
+                x_start = int(pos[0] - rotated.shape[1] / 2)
+                y_start = int(pos[1] - rotated.shape[0] / 2)
+                x_end = int(x_start+rotated.shape[1])
+                y_end = int(y_start+rotated.shape[0])
+
                 if y_start > self.board.board_copy.shape[0] or x_start > self.board.board_copy.shape[
                     1] or x_end < 0 or y_end < 0:
-                    return board
+                    return self.board
 
                 if y_start < 0:
                     val = abs(y_start)
-                    sprite = sprite[val:, :]
-                    mask = mask[val:, :]
+                    rotated = rotated[val:, :]
                     y_start = 0
 
                 if x_start < 0:
                     val = abs(x_start)
-                    sprite = sprite[:, val:]
-                    mask = mask[:, val:]
+                    rotated = rotated[:, val:]
                     x_start = 0
 
                 if y_end > self.board.board_copy.shape[0]:
                     val = abs(y_end - self.board.board_copy.shape[0])
-                    sprite = sprite[:sprite.shape[0] - val, :]
-                    mask = mask[:sprite.shape[0], :]
+                    rotated = rotated[:rotated.shape[0] - val, :]
                     y_end = self.board.board_copy.shape[0]
 
                 if x_end > self.board.board_copy.shape[1]:
                     val = abs(x_end - self.board.board_copy.shape[1])
-                    sprite = sprite[:, :sprite.shape[1] - val]
-                    mask = mask[:, :sprite.shape[1]]
+                    rotated = rotated[:, :rotated.shape[1] - val]
                     x_end = self.board.board_copy.shape[1]
 
-                board_shape = self.board.board_copy[y_start:y_end, x_start:x_end, :].shape
-                img_shape = sprite.shape
+                splice = self.board.board_copy[int(y_start):int(y_end), int(x_start):int(x_end)]
 
-                while board_shape != img_shape:
-                    if board_shape[0] < img_shape[0] or board_shape[1] < img_shape[1]:
-                        sprite = sprite[:board_shape[0], :board_shape[1], :]
-                        mask = mask[:board_shape[0], :board_shape[1], :]
+                if rotated.shape[:2] != splice.shape[:2]:
+                    h,w = rotated.shape[:2]
+                    hh,ww = splice.shape[:2]
 
-                    if board_shape[0] > img_shape[0] or board_shape[1] > img_shape[1]:
-                        x_end -= board_shape[1] - img_shape[1]
-                        y_end -= board_shape[0] - img_shape[0]
+                    ydiff = h - hh
+                    y_end += ydiff
+                    xdiff = w - ww
+                    x_end += xdiff
 
-                    img_shape = sprite.shape
-                    board_shape = self.board.board_copy[y_start:y_end, x_start:x_end, :].shape
+                    splice = splice[:(ydiff if ydiff < 0 else None) ,:(xdiff if xdiff < 0 else None) ]
 
-                self.board.board_copy[y_start:y_end, x_start:x_end, :] = (self.board.board_copy[y_start:y_end,
-                                                                          x_start:x_end,
-                                                                          :] * (1 - mask)) + sprite
-                # board[y_start:y_end, x_start:x_end] = board[y_start:y_end, x_start:x_end] * (1 - mask) + (img * mask)
+                spr = rotated[:,:,:3]
+                msk = rotated[:,:,3:]
+
+
+
+                self.board.board_copy[int(y_start):int(y_end),int(x_start):int(x_end)] = (spr * msk) + (splice * (1-msk))
+
+
             else:
                 if type(self.colour) is tuple or type(self.colour) is list:
                     colour = self.colour
@@ -2692,6 +2740,7 @@ class _Base_Block():
                 for pos in self.translated_position:
                     self.board.board_copy = cv2.fillConvexPoly(self.board.board_copy, pos.astype(int),
                                                                colour)
+
 
                 # for pos, fix in zip(self.translated_position, self.body.fixtures):
                 #     if type(fix.shape) == b2PolygonShape:
@@ -2702,7 +2751,29 @@ class _Base_Block():
                 #                                            int(convert_from_mks(fix.shape.radius)),
                 #                                            colour,
                 #                                            thickness=-1)
+        # box = cv2.boundingRect(np.array(self.translated_position).astype(int))
+        # box =  createRectangle(*box)
+        # point = tuple(np.array(convert_from_mks(self.body.position)).astype(int))
+        # # box = cv2.boxPoints(cv2.minAreaRect(np.array(self.translated_position).astype(int)))
+        # # point = tuple(cv2.boxPoints(cv2.minAreaRect(np.array(self.translated_position).astype(int))).mean(axis=0).astype(int))
+        # for i,x in enumerate(box):
+        #     try:
+        #         self.board.board_copy = cv2.line(self.board.board_copy, tuple(x), tuple(box[i + 1 if i < len(box)-1 else 0]), (233,12,23),6)
+        #     except:
+        #         pass
+        #
+        # self.board.board_copy = cv2.circle(self.board.board_copy, tuple(self.position), 6,
+        #                                    (122, 222, 30), thickness=-1)
+        # self.board.board_copy = cv2.circle(self.board.board_copy, point, 6,
+        #                                    (243, 100, 30), thickness=-1)
 
+        # cv2.boxPoints(cv2.minAreaRect(np.array(self.translated_position).astype(int))).mean(axis=0)
+        # self.board.board_copy = cv2.circle(self.board.board_copy, tuple([int(x) for x in self.position]), 6,
+        #                                     (243, 22, 234), thickness=-1)
+        # self.board.board_copy = cv2.circle(self.board.board_copy, tuple([int(x) for x in self.centroid]), 6,
+        #                                     (100, 22, 234), thickness=-1)
+        # self.board.board_copy = cv2.circle(self.board.board_copy, tuple([int(x) for x in self.center]), 6, (0, 22, 234),
+        #                                    thickness=-1)
         return self.board
 
 
@@ -2916,7 +2987,8 @@ class Contacter(b2ContactListener):
         self.world = world
 
     def get_sensor_block(self, contact):
-
+        blockA = None
+        blockB = None
         # check if objects have the correct user data
 
         idd = id(contact.fixtureA.body)
@@ -2938,36 +3010,38 @@ class Contacter(b2ContactListener):
         sensor = None
         block = None
 
-        if not blockA.sensor["type"] is None and blockB.sensor["type"] is None:
-            sensor = blockA
-            block = blockB
-        elif not blockB.sensor["type"] is None and blockA.sensor["type"] is None:
-            sensor = blockB
-            block = blockA
-        elif blockB.static is True and blockA.sensor["type"] is None:
-            sensor = blockB
-            block = blockA
-        elif blockA.static is True and blockB.sensor["type"] is None:
-            sensor = blockB
-            block = blockA
-        elif blockB.is_boundry is True and blockA.sensor["type"] is None:
-            sensor = blockB
-            block = blockA
-        elif blockA.is_boundry is True and blockB.sensor["type"] is None:
-            sensor = blockB
-            block = blockA
+        if not blockA is None:
 
-        elif blockB.sensor["type"] == "bullet" and blockA.sensor["type"] is None:
-            sensor = blockB
-            block = blockA
-        elif blockA.sensor["type"] == "bullet" and blockB.sensor["type"] is None:
-            sensor = blockB
-            block = blockA
+            if not blockA.sensor["type"] is None and blockB.sensor["type"] is None:
+                sensor = blockA
+                block = blockB
+            elif not blockB.sensor["type"] is None and blockA.sensor["type"] is None:
+                sensor = blockB
+                block = blockA
+            elif blockB.static is True and blockA.sensor["type"] is None:
+                sensor = blockB
+                block = blockA
+            elif blockA.static is True and blockB.sensor["type"] is None:
+                sensor = blockB
+                block = blockA
+            elif blockB.is_boundry is True and blockA.sensor["type"] is None:
+                sensor = blockB
+                block = blockA
+            elif blockA.is_boundry is True and blockB.sensor["type"] is None:
+                sensor = blockB
+                block = blockA
 
-        if sensor is None or block is None:
-            return None, None
-        else:
-            return sensor, block
+            elif blockB.sensor["type"] == "bullet" and blockA.sensor["type"] is None:
+                sensor = blockB
+                block = blockA
+            elif blockA.sensor["type"] == "bullet" and blockB.sensor["type"] is None:
+                sensor = blockB
+                block = blockA
+
+            if sensor is None or block is None:
+                return None, None
+            else:
+                return sensor, block
 
     def BeginContact(self, contact):
 
