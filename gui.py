@@ -367,6 +367,19 @@ def deal_with_toolbar_event(toolbar, cur_key, cur_key_type, draw, msg):
     event, values = toolbar.read(1)
     key = None
 
+    # set the buttons enables or disabled.
+    #this sets the current clicked
+    for itm in toolbar.element_list():
+        if itm.Key == msg.message and not itm.metadata is None and itm.metadata[3] is True:
+            itm.update(disabled=True)
+        else:
+            try:
+                itm.update(disabled=False)
+            except TypeError:
+                pass
+            except AttributeError:
+                pass
+    #this sets the draw type
     for i, ty in enumerate(["Polygon", "Rectangle", "Circle"]):
         if draw.draw_type == i:
             toolbar[ty].update(disabled=True)
@@ -385,7 +398,7 @@ def deal_with_toolbar_event(toolbar, cur_key, cur_key_type, draw, msg):
             draw.reset()
         elif cur_key_type == 1 and values["tabs"] == "create_tab":
             cur_key_type = 0
-            msg.set_message("Create Mode Enabled")
+            msg.set_message("Draw Mode Enabled")
             draw.reset()
 
     elif event != "__TIMEOUT__":

@@ -850,7 +850,7 @@ class Physics():
                 "fixtures": fixtures_dic, "shapes": shape_dic,
                 "joints": all_joints, "joints_userData": all_joints_userData, "clone_id": clone_id}
 
-    def create_pre_def_block(self, info, convert_joints=True, clone=False, load=False):
+    def create_pre_def_block(self, info, convert_joints=True, clone=False, load=False,resize=False):
         """
         Used to recreate blocks saved as a dict
         """
@@ -920,7 +920,8 @@ class Physics():
             if not block.sprite is None:
                 block.set_min_mix(True)
                 block.set_height_width()
-                block.sprite = cv2.resize(block.sprite, dsize=(int(block.width), int(block.height)),interpolation=cv2.INTER_LANCZOS4)
+                if resize:
+                    block.sprite = cv2.resize(block.sprite, dsize=(int(block.width), int(block.height)),interpolation=cv2.INTER_CUBIC)
             # not needed any more!!
             # if block.sprite_on and not type(block.sprite) is None:
             #     block.set_sprite(force=True)
@@ -1441,57 +1442,58 @@ class Physics():
         else:
             bls = bl_list
 
-        base_bl = bls.pop(0)
+        if len(bls) > 0:
+            base_bl = bls.pop(0)
 
-        base_center = base_bl.body.position
+            base_center = base_bl.body.position
 
-        delete_list = []
+            delete_list = []
 
-        for i in np.arange(len(bls) - 1, -1, -1):
-            bl = bls.pop(i)
-            for fix in bl.body.fixtures:
+            for i in np.arange(len(bls) - 1, -1, -1):
+                bl = bls.pop(i)
+                for fix in bl.body.fixtures:
 
-                if type(fix.shape) == b2PolygonShape:
-                    # shape = fix.shape.vertices
-                    # poly = Polygon(shape)
-                    # shape = list(rt(poly, bl.body.angle, use_radians=True).exterior.coords)
-                    #
-                    # center = bl.body.position
-                    # trans = (center - base_center) * -1
-                    # new_shape = [b2Vec2(s) - trans for s in shape]
+                    if type(fix.shape) == b2PolygonShape:
+                        # shape = fix.shape.vertices
+                        # poly = Polygon(shape)
+                        # shape = list(rt(poly, bl.body.angle, use_radians=True).exterior.coords)
+                        #
+                        # center = bl.body.position
+                        # trans = (center - base_center) * -1
+                        # new_shape = [b2Vec2(s) - trans for s in shape]
 
-                    new_shape = [base_bl.body.GetLocalPoint((bl.body.transform * v)) for v in fix.shape.vertices]
+                        new_shape = [base_bl.body.GetLocalPoint((bl.body.transform * v)) for v in fix.shape.vertices]
 
-                    base_bl.body.CreateFixture(b2FixtureDef(shape=b2PolygonShape(vertices=new_shape),
-                                                            restitution=bl.body.fixtures[0].restitution,
-                                                            density=bl.body.fixtures[0].density,
-                                                            friction=bl.body.fixtures[0].friction))
+                        base_bl.body.CreateFixture(b2FixtureDef(shape=b2PolygonShape(vertices=new_shape),
+                                                                restitution=bl.body.fixtures[0].restitution,
+                                                                density=bl.body.fixtures[0].density,
+                                                                friction=bl.body.fixtures[0].friction))
 
-                    base_bl.base_poly = base_bl.set_base_poly()
-                    base_bl.base_poly_coords = np.array([np.array(pl.exterior.coords) for pl in base_bl.base_poly])
-                else:
+                        base_bl.base_poly = base_bl.set_base_poly()
+                        base_bl.base_poly_coords = np.array([np.array(pl.exterior.coords) for pl in base_bl.base_poly])
+                    else:
 
-                    radius = fix.shape.radius
-                    center = bl.body.position
-                    trans = base_bl.body.GetLocalPoint((float(bl.body.worldCenter.x),float(bl.body.worldCenter.y)))
-                    # trans[0] = trans[0] * -1
-                    base_bl.body.CreateFixture(b2FixtureDef(shape=b2CircleShape(radius=radius, pos=trans),
-                                                            restitution=bl.body.fixtures[0].restitution,
-                                                            density=bl.body.fixtures[0].density,
-                                                            friction=bl.body.fixtures[0].friction))
-            delete_list.append(bl)
+                        radius = fix.shape.radius
+                        center = bl.body.position
+                        trans = base_bl.body.GetLocalPoint((float(bl.body.worldCenter.x),float(bl.body.worldCenter.y)))
+                        # trans[0] = trans[0] * -1
+                        base_bl.body.CreateFixture(b2FixtureDef(shape=b2CircleShape(radius=radius, pos=trans),
+                                                                restitution=bl.body.fixtures[0].restitution,
+                                                                density=bl.body.fixtures[0].density,
+                                                                friction=bl.body.fixtures[0].friction))
+                delete_list.append(bl)
 
-        self.delete(delete_list)
+            self.delete(delete_list)
 
-        base_bl.base_poly = base_bl.set_base_poly()
-        base_bl.base_poly_coords = np.array([np.array(pl.exterior.coords) for pl in base_bl.base_poly])
+            base_bl.base_poly = base_bl.set_base_poly()
+            base_bl.base_poly_coords = np.array([np.array(pl.exterior.coords) for pl in base_bl.base_poly])
 
-        for i, fix in enumerate(base_bl.body.fixtures):
-            if i != 0:
-                fix.filterData.groupIndex = base_bl.body.fixtures[0].filterData.groupIndex
+            for i, fix in enumerate(base_bl.body.fixtures):
+                if i != 0:
+                    fix.filterData.groupIndex = base_bl.body.fixtures[0].filterData.groupIndex
 
-        if is_terrain:
-            base_bl.poly = base_bl.get_poly()
+            if is_terrain:
+                base_bl.poly = base_bl.get_poly()
 
     def re_add_size(self, bl, sizes):
         for fix, old_shape in zip(bl.body.fixtures, sizes):
@@ -1526,186 +1528,187 @@ class Physics():
                     self.delete(bl)
                     return
 
-                for i, act in enumerate(userData["actions"]):
-
-                    sensor = [bl for bl in self.block_list if bl.id == act["id"]]
-                    if len(sensor) == 0:
-                        remove_positions.append(i)
-                        break
-                    else:
-                        sensor = sensor[0]
-
-                    contains_poly = sensor.does_contain(bl)
-
-                    # action for switching gravity
-                    if act["type"] == "gravity" and act["complete"] is False:
-                        if (contains_poly and act["fire_action_once_contained"]) or not act[
-                            "fire_action_once_contained"]:
-                            bl.body.gravityScale *= -1
-                            act["complete"] = True
-                            if act["reverse_keys"]:
-                                for k, v in bl.keys.items():
-                                    for act in v:
-                                        try:
-                                            if type(act["extra"]) in [float, int]:
-                                                act["extra"] *= -1
-                                            elif type(act["extra"]) in [list, tuple]:
-                                                act["extra"] = np.array(act["extra"]) * -1
-                                            else:
-                                                pass
-                                        except ValueError:
-                                            # error setting value
-                                            pass
-
-                    elif act["type"] == "center" and act["complete"] is False:
-                        if (contains_poly and act["fire_action_once_contained"]) or not act[
-                            "fire_action_once_contained"]:
-
-                            bl.center_me = True
-                            bl.death_actions["return_translation"] = act["translation"]
-                            if not act["allow_multiple_fires"]:
-                                act["complete"] = True
-
-                    elif act["type"] == "impulse" and act["complete"] is False:
-                        if (contains_poly and act["fire_action_once_contained"]) or not act[
-                            "fire_action_once_contained"]:
-
-                            bl.body.ApplyLinearImpulse((np.array(act["vector"]) * bl.body.mass) * 2,
-                                                       bl.body.worldCenter,
-                                                       wake=True)
-                            if not act["allow_multiple_fires"]:
-                                act["complete"] = True
-
-                    elif act["type"] == "force" and act["complete"] is False:
-                        if (contains_poly and act["fire_action_once_contained"]) or not act[
-                            "fire_action_once_contained"]:
-                            bl.body.ApplyForce((np.array(act["vector"]) * bl.body.mass) * 2, bl.body.worldCenter,
-                                               wake=True)
-
-                            if not act["allow_multiple_fires"]:
-                                act["complete"] = True
-
-                    # action for Water
-                    elif act["type"] == "water" and act["complete"] is False:
+                if "actions" in userData.keys():
+                    for i, act in enumerate(userData["actions"]):
 
                         sensor = [bl for bl in self.block_list if bl.id == act["id"]]
-                        if len(sensor) > 0:
-                            sensor = sensor[0]
-                            bl_poly = bl.get_poly(4)
-                            sensor_poly = sensor.get_poly(4)
-                            intersection = sensor_poly.intersection(bl_poly)
-                            if type(intersection) is MultiPolygon:
-                                intersection = intersection.convex_hull
-
-                            int_area = convert_to_mks(intersection.area) / 42.5
-                            if int_area > 0:
-                                int_centroid = convert_to_mks(intersection.centroid.x, intersection.centroid.y)
-                                water_density = bl.body.fixtures[0].density
-                                displaced_mass = water_density * int_area
-                                buoyancy_force = displaced_mass * -np.array(self.gravity)
-
-                                bl.body.ApplyForce(buoyancy_force, int_centroid, wake=True)
-                                coords = list(intersection.exterior.coords)
-
-                                for i in range(len(coords) - 1):
-                                    v0 = b2Vec2(convert_to_mks(coords[i][0], coords[i][1]))
-                                    v1 = b2Vec2(convert_to_mks(coords[i + 1][0], coords[i + 1][1]))
-                                    mid = 0.5 * (v0 + v1)
-                                    velDir = b2Vec2(bl.body.GetLinearVelocityFromWorldPoint(
-                                        mid) - sensor.body.GetLinearVelocityFromWorldPoint(mid))
-                                    vel = velDir.Normalize()
-                                    edge = b2Vec2(v1 - v0)
-                                    edgeLength = b2Vec2(edge).Normalize()
-                                    normal = b2Vec2(b2Cross(-1, edge))
-                                    dragDot = b2Dot(normal, velDir)
-                                    if dragDot > 0:
-                                        dragMag = dragDot * edgeLength * water_density * vel * vel
-                                        dragForce = dragMag * -velDir
-                                        bl.body.ApplyForce(dragForce, mid, wake=True)
-
-                                        # lift for moving objects
-                                        liftDot = b2Dot(edge, velDir);
-                                        liftMag = (dragDot * liftDot) * edgeLength * water_density * vel * vel
-                                        liftDir = b2Vec2(b2Cross(1, velDir))
-                                        liftForce = b2Vec2(liftMag * liftDir)
-                                        bl.body.ApplyForce(liftForce, mid, wake=True);
-
-                                angularDrag = int_area * -bl.body.angularVelocity
-                                bl.body.ApplyTorque(angularDrag, wake=True)
+                        if len(sensor) == 0:
+                            remove_positions.append(i)
+                            break
                         else:
-                            pass
-                    # action for switching gravity to low (almost water like)
-                    elif act["type"] == "lowgravity" and act["complete"] == False:
-                        if (contains_poly and act["fire_action_once_contained"]) or not act[
-                            "fire_action_once_contained"]:
-                            bl.body.gravityScale = act["scale"]
-                            act["complete"] = True
+                            sensor = sensor[0]
 
-                    # action for switching gravity to normal
-                    elif act["type"] == "lowgravity" and act["complete"] == "switch":
+                        contains_poly = sensor.does_contain(bl)
 
-                        bl.body.gravityScale = 1
-                        remove_positions.append(i)
+                        # action for switching gravity
+                        if act["type"] == "gravity" and act["complete"] is False:
+                            if (contains_poly and act["fire_action_once_contained"]) or not act[
+                                "fire_action_once_contained"]:
+                                bl.body.gravityScale *= -1
+                                act["complete"] = True
+                                if act["reverse_keys"]:
+                                    for k, v in bl.keys.items():
+                                        for act in v:
+                                            try:
+                                                if type(act["extra"]) in [float, int]:
+                                                    act["extra"] *= -1
+                                                elif type(act["extra"]) in [list, tuple]:
+                                                    act["extra"] = np.array(act["extra"]) * -1
+                                                else:
+                                                    pass
+                                            except ValueError:
+                                                # error setting value
+                                                pass
 
-                    # splitter sensor action
-                    elif act["type"] == "splitter" and act["complete"] == False:
-                        if (contains_poly and act["fire_action_once_contained"]) or not act[
-                            "fire_action_once_contained"]:
-                            if bl.get_area() > float(act["min_split_area"]):
-                                self.fractal_block(bl, create=False, static=False)
+                        elif act["type"] == "center" and act["complete"] is False:
+                            if (contains_poly and act["fire_action_once_contained"]) or not act[
+                                "fire_action_once_contained"]:
+
+                                bl.center_me = True
+                                bl.death_actions["return_translation"] = act["translation"]
                                 if not act["allow_multiple_fires"]:
                                     act["complete"] = True
 
-                    # action for shrink,enlarge
-                    elif act["type"] in ["enlarger", "shrinker"] and act["complete"] == False:
-                        if (contains_poly and act["fire_action_once_contained"]) or not act[
-                            "fire_action_once_contained"]:
-                            old_shapes = []
-                            for fix in bl.body.fixtures:
-                                if type(fix.shape) is b2PolygonShape:
-                                    old_vert = fix.shape.vertices
-                                    old_shapes.append(fix.shape.vertices)
-                                    new_poly = affinity.scale(Polygon(fix.shape.vertices),
-                                                              act["enlarge_ratio"] if act["type"] == "enlarger" else 1 -
-                                                                                                                     act[
-                                                                                                                         "shrink_ratio"],
-                                                              act["enlarge_ratio"] if act["type"] == "enlarger" else 1 -
-                                                                                                                     act[
-                                                                                                                         "shrink_ratio"])
-                                    if new_poly.area > convert_to_mks(0.5):
-                                        fix.shape.vertices = list(new_poly.exterior.coords)
-                                    area = new_poly.area
-                                else:
-                                    old_shapes.append(fix.shape.radius)
-                                    fix.shape.radius *= act["enlarge_ratio"] if act["type"] == "enlarger" else 1 - act[
-                                        "shrink_ratio"]
-                                    if fix.shape.radius < convert_to_mks(4):
-                                        fix.shape.radius = convert_to_mks(4)
+                        elif act["type"] == "impulse" and act["complete"] is False:
+                            if (contains_poly and act["fire_action_once_contained"]) or not act[
+                                "fire_action_once_contained"]:
 
-                            if not act["allow_multiple_fires"]:
+                                bl.body.ApplyLinearImpulse((np.array(act["vector"]) * bl.body.mass) * 2,
+                                                           bl.body.worldCenter,
+                                                           wake=True)
+                                if not act["allow_multiple_fires"]:
+                                    act["complete"] = True
+
+                        elif act["type"] == "force" and act["complete"] is False:
+                            if (contains_poly and act["fire_action_once_contained"]) or not act[
+                                "fire_action_once_contained"]:
+                                bl.body.ApplyForce((np.array(act["vector"]) * bl.body.mass) * 2, bl.body.worldCenter,
+                                                   wake=True)
+
+                                if not act["allow_multiple_fires"]:
+                                    act["complete"] = True
+
+                        # action for Water
+                        elif act["type"] == "water" and act["complete"] is False:
+
+                            sensor = [bl for bl in self.block_list if bl.id == act["id"]]
+                            if len(sensor) > 0:
+                                sensor = sensor[0]
+                                bl_poly = bl.get_poly(4)
+                                sensor_poly = sensor.get_poly(4)
+                                intersection = sensor_poly.intersection(bl_poly)
+                                if type(intersection) is MultiPolygon:
+                                    intersection = intersection.convex_hull
+
+                                int_area = convert_to_mks(intersection.area) / 42.5
+                                if int_area > 0:
+                                    int_centroid = convert_to_mks(intersection.centroid.x, intersection.centroid.y)
+                                    water_density = bl.body.fixtures[0].density
+                                    displaced_mass = water_density * int_area
+                                    buoyancy_force = displaced_mass * -np.array(self.gravity)
+
+                                    bl.body.ApplyForce(buoyancy_force, int_centroid, wake=True)
+                                    coords = list(intersection.exterior.coords)
+
+                                    for i in range(len(coords) - 1):
+                                        v0 = b2Vec2(convert_to_mks(coords[i][0], coords[i][1]))
+                                        v1 = b2Vec2(convert_to_mks(coords[i + 1][0], coords[i + 1][1]))
+                                        mid = 0.5 * (v0 + v1)
+                                        velDir = b2Vec2(bl.body.GetLinearVelocityFromWorldPoint(
+                                            mid) - sensor.body.GetLinearVelocityFromWorldPoint(mid))
+                                        vel = velDir.Normalize()
+                                        edge = b2Vec2(v1 - v0)
+                                        edgeLength = b2Vec2(edge).Normalize()
+                                        normal = b2Vec2(b2Cross(-1, edge))
+                                        dragDot = b2Dot(normal, velDir)
+                                        if dragDot > 0:
+                                            dragMag = dragDot * edgeLength * water_density * vel * vel
+                                            dragForce = dragMag * -velDir
+                                            bl.body.ApplyForce(dragForce, mid, wake=True)
+
+                                            # lift for moving objects
+                                            liftDot = b2Dot(edge, velDir);
+                                            liftMag = (dragDot * liftDot) * edgeLength * water_density * vel * vel
+                                            liftDir = b2Vec2(b2Cross(1, velDir))
+                                            liftForce = b2Vec2(liftMag * liftDir)
+                                            bl.body.ApplyForce(liftForce, mid, wake=True);
+
+                                    angularDrag = int_area * -bl.body.angularVelocity
+                                    bl.body.ApplyTorque(angularDrag, wake=True)
+                            else:
+                                pass
+                        # action for switching gravity to low (almost water like)
+                        elif act["type"] == "lowgravity" and act["complete"] == False:
+                            if (contains_poly and act["fire_action_once_contained"]) or not act[
+                                "fire_action_once_contained"]:
+                                bl.body.gravityScale = act["scale"]
                                 act["complete"] = True
-                            if "min_area" in act.keys() and bl.get_area() < float(act["min_area"]):
-                                self.re_add_size(bl, old_shapes)
-                            if "max_area" in act.keys() and bl.get_area() > float(act["max_area"]):
-                                self.re_add_size(bl, old_shapes)
 
-                            bl.base_poly = bl.set_base_poly()
-                            bl.base_poly_coords = np.array([np.array(pl.exterior.coords) for pl in bl.base_poly])
+                        # action for switching gravity to normal
+                        elif act["type"] == "lowgravity" and act["complete"] == "switch":
 
-                            bl.get_current_pos(force=True)
+                            bl.body.gravityScale = 1
+                            remove_positions.append(i)
 
-                    # sensor for switching motor
-                    if act["type"] == "motorsw" and act["complete"] == False:
-                        if act["id_to_switch"] == "":
-                            bl_check = bl
-                        else:
-                            bl_check = [bl for bl in self.block_list if bl.id == act["id_to_switch"]][0]
+                        # splitter sensor action
+                        elif act["type"] == "splitter" and act["complete"] == False:
+                            if (contains_poly and act["fire_action_once_contained"]) or not act[
+                                "fire_action_once_contained"]:
+                                if bl.get_area() > float(act["min_split_area"]):
+                                    self.fractal_block(bl, create=False, static=False)
+                                    if not act["allow_multiple_fires"]:
+                                        act["complete"] = True
 
-                        for jn in bl_check.body.joints:
-                            if hasattr(jn.joint, "motorSpeed"):
-                                jn.joint.motorSpeed *= -1
+                        # action for shrink,enlarge
+                        elif act["type"] in ["enlarger", "shrinker"] and act["complete"] == False:
+                            if (contains_poly and act["fire_action_once_contained"]) or not act[
+                                "fire_action_once_contained"]:
+                                old_shapes = []
+                                for fix in bl.body.fixtures:
+                                    if type(fix.shape) is b2PolygonShape:
+                                        old_vert = fix.shape.vertices
+                                        old_shapes.append(fix.shape.vertices)
+                                        new_poly = affinity.scale(Polygon(fix.shape.vertices),
+                                                                  act["enlarge_ratio"] if act["type"] == "enlarger" else 1 -
+                                                                                                                         act[
+                                                                                                                             "shrink_ratio"],
+                                                                  act["enlarge_ratio"] if act["type"] == "enlarger" else 1 -
+                                                                                                                         act[
+                                                                                                                             "shrink_ratio"])
+                                        if new_poly.area > convert_to_mks(0.5):
+                                            fix.shape.vertices = list(new_poly.exterior.coords)
+                                        area = new_poly.area
+                                    else:
+                                        old_shapes.append(fix.shape.radius)
+                                        fix.shape.radius *= act["enlarge_ratio"] if act["type"] == "enlarger" else 1 - act[
+                                            "shrink_ratio"]
+                                        if fix.shape.radius < convert_to_mks(4):
+                                            fix.shape.radius = convert_to_mks(4)
 
-                        act["complete"] = True
+                                if not act["allow_multiple_fires"]:
+                                    act["complete"] = True
+                                if "min_area" in act.keys() and bl.get_area() < float(act["min_area"]):
+                                    self.re_add_size(bl, old_shapes)
+                                if "max_area" in act.keys() and bl.get_area() > float(act["max_area"]):
+                                    self.re_add_size(bl, old_shapes)
+
+                                bl.base_poly = bl.set_base_poly()
+                                bl.base_poly_coords = np.array([np.array(pl.exterior.coords) for pl in bl.base_poly])
+
+                                bl.get_current_pos(force=True)
+
+                        # sensor for switching motor
+                        if act["type"] == "motorsw" and act["complete"] == False:
+                            if act["id_to_switch"] == "":
+                                bl_check = bl
+                            else:
+                                bl_check = [bl for bl in self.block_list if bl.id == act["id_to_switch"]][0]
+
+                            for jn in bl_check.body.joints:
+                                if hasattr(jn.joint, "motorSpeed"):
+                                    jn.joint.motorSpeed *= -1
+
+                            act["complete"] = True
 
             # remove not needed actions
             for i in np.arange(len(remove_positions) - 1, -1, -1):
