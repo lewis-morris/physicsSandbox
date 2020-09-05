@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
-from configobj import ConfigObj
 
 from gui import update_block, get_fixtures, get_toolbar, deal_with_toolbar_event, get_clicked_keys_gui
 from keyboardmouse import *
-from objects import load
 
 
 def add(event, x, y, flags, param):
@@ -21,10 +19,21 @@ def add(event, x, y, flags, param):
     x_new = (x + board.translation[0] * -1)
     y_new = (y + board.translation[1] * -1)
 
-    if cur_key is None or cur_key == "":
-        pass
+    #check for screen move
+    if event == cv2.EVENT_MBUTTONDOWN or draw.move_screen:
+        """
+        Used to move the screen
+        """
+        if event == cv2.EVENT_MBUTTONDOWN:
+            draw.move_screen = True
+        draw, board = move_screen(draw, board, x_new, y_new, event)
 
-    elif cur_key[0] == "1" and cur_key_type == 0:
+    #check if no key
+    if (cur_key is None or cur_key == "") and (not draw.move_screen or not event == cv2.EVENT_MBUTTONDOWN):
+        return
+
+    #check all other keys
+    if cur_key[0] == "1" and cur_key_type == 0:
         """
         Used to create fire blocks or create them.
         """
@@ -111,6 +120,13 @@ def add(event, x, y, flags, param):
         """
         cur_key = cur_key[0] + str(draw.draw_type)
         draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="impulse")
+
+    elif cur_key[0] == "{" and cur_key_type == 0:
+        """
+        Used to create Spawn sensors
+        """
+        cur_key = cur_key[0] + str(draw.draw_type)
+        draw, phys = draw_sensor(draw, phys, event, x_new, y_new, cur_key, ty="spawner")
 
     elif cur_key[0] == "'" and cur_key_type == 0:
         """
@@ -323,14 +339,6 @@ def add(event, x, y, flags, param):
             bl = get_clicked_keys_gui(draw.player_list[0])
             draw.reset()
 
-
-    elif cur_key[0] == "1" and cur_key_type == 1:
-        """
-        Used to move the screen
-        """
-        if msg.message == "Screen Move":
-            draw, board = move_screen(draw, board, x_new, y_new, event)
-
     elif cur_key[0] == "2" and cur_key_type == 1:
         """
         Used to center the board on the clicked player
@@ -413,28 +421,31 @@ if __name__ == "__main__":
 
     # init the physics engine, board, and timer.
     timer, phys, draw, board, msg = load_gui(persistant=True)
+
+
+    #load config
     config = phys.config
 
-    # set window name and mouse callback for mouse events
-    cur_key = ""
-    cur_key_type = 0
+
+    #init other running vars
     force = False
     loops = 0
-
     timeStep = 1.0 / 50
+    cur_key = ""
+    cur_key_type = 0
 
-    key_type = 1
+    #key_type = 1
 
+    # set window name and mouse callback for mouse events
     cv2.namedWindow("Board")
     cv2.setMouseCallback("Board", add)
 
+    #get the tool bar
     toolbar = get_toolbar()
 
     # start loop
     if not hasattr(board, "run"):
         setattr(board, "run", True)
-
-
 
     while board.run:
 

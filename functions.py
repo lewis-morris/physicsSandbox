@@ -1,22 +1,15 @@
 import ast
-import configparser
 import copy
 import math
-import pickle
-
 import random
+
 import cv2
 import dill
 import numpy as np
-import shapely
-from Box2D import b2CircleShape, b2PolygonShape, b2FixtureDef
-from sect.triangulation import constrained_delaunay_triangles, delaunay_triangles
-
-from shapely.geometry import Point, LineString
-from shapely.geometry.polygon import Polygon
-from shapely import affinity
 from configobj import ConfigObj
-from shapely.ops import unary_union
+from sect.triangulation import constrained_delaunay_triangles
+from shapely.geometry import LineString
+from shapely.geometry.polygon import Polygon
 
 
 def rotate_around_point_highperf(xy, radians, origin=(0, 0)):
@@ -38,12 +31,12 @@ def rotate_around_point_highperf(xy, radians, origin=(0, 0)):
     return qx, qy
 
 
-
 def get_config_object(name):
     config = ConfigObj(name)
     if config == {}:
         config = ConfigObj("../" + name)
     return config
+
 
 config = get_config_object('config.cfg')
 
@@ -52,6 +45,7 @@ config = get_config_object('config.cfg')
 
 config_reads = 0
 ppm = 45
+
 
 def convert_to_mks(x, y=None):
     global ppm
@@ -68,17 +62,17 @@ def convert_from_mks(x, y=None):
     else:
         return x * ppm
 
+
 def fragment_poly(conts):
-
-
     conts = constrained_delaunay_triangles([tuple(x) for x in np.array(conts).squeeze()])
     final_contours = []
     for cn in conts:
         final_contours.append(cn)
     return final_contours
 
-def create_floor_poly(max_width, max_height,slope_times_min,slope_times_max,x_stride_min,x_stride_max,y_stride_min,y_stride_max,full_poly=True):
 
+def create_floor_poly(max_width, max_height, slope_times_min, slope_times_max, x_stride_min, x_stride_max, y_stride_min,
+                      y_stride_max, full_poly=True):
     coords = [[0, 0], [400, 0]]
     slope_times = 0
     slope = 0
@@ -103,7 +97,7 @@ def create_floor_poly(max_width, max_height,slope_times_min,slope_times_max,x_st
         else:
 
             if random.randint(0, 10) == 10:
-                y_rand = random.randint(int(y_stride_max*1.3), int(y_stride_max*2))
+                y_rand = random.randint(int(y_stride_max * 1.3), int(y_stride_max * 2))
             else:
                 y_rand = random.randint(y_stride_min, y_stride_max)
 
@@ -111,9 +105,9 @@ def create_floor_poly(max_width, max_height,slope_times_min,slope_times_max,x_st
 
         new_coords = copy.copy(coords[-1])
         new_coords[0] += x_rand
-        new_coords[1] += y_rand*-1
+        new_coords[1] += y_rand * -1
 
-        if not new_coords[1] > max_height-100 or not new_coords[1] < 100:
+        if not new_coords[1] > max_height - 100 or not new_coords[1] < 100:
             coords.append(new_coords)
 
         slope_times -= 1
@@ -133,18 +127,18 @@ def create_floor_poly(max_width, max_height,slope_times_min,slope_times_max,x_st
     else:
         return LineString(coords)
 
+
 def check_contains_all(block_list, shape, board):
     """ used to search a rectangular shape for blocks"""
 
     contained_list = []
-
 
     # check if you are allowed to select the floor
     blocks = block_list
 
     for block in [blo for blo in blocks if blo.is_onscreen]:
         poly = block.translated_position
-        #poly_inside_poly(poly,square)
+        # poly_inside_poly(poly,square)
         if poly_inside_poly(poly, shape) is True:
             contained_list.append(block)
 
@@ -173,12 +167,13 @@ def set_config(main, sub, val):
     config[main][sub] = str(val)
     config.write()
 
-def get_config(main, sub, configIn=None):
+
+def get_config(main, sub, config_in=None):
     global config_reads
-    if configIn is None:
+    if config_in is None:
         global config
     else:
-        config = configIn
+        config = config_in
 
     if config_reads > 200:
         config = get_config_object('config.cfg')
@@ -198,7 +193,7 @@ def get_config(main, sub, configIn=None):
         joined = "".join(val)
         joined_dic = ",".join(val)
         if ":" in joined_dic:
-            joined_dic = joined_dic.replace("{","").replace("}","")
+            joined_dic = joined_dic.replace("{", "").replace("}", "")
             dic = {}
             for val in joined_dic.split(","):
                 k, v = val.split(":")
@@ -238,18 +233,18 @@ def get_config(main, sub, configIn=None):
             return val
 
 
-
-def get_angle(v1,v2):
-
+def get_angle(v1, v2):
     y = v2[1] - v1[1]
     x = v2[0] - v1[0]
     return math.atan2(y, x) / math.pi * 180
+
 
 def unit_vector(vector):
     """ Returns the unit vector of the vector.  """
     return vector / np.linalg.norm(vector)
 
-def get_all_in_poly(phys,coords):
+
+def get_all_in_poly(phys, coords):
     """
     used for slecting players
     :param phys:
@@ -272,10 +267,11 @@ def get_all_in_poly(phys,coords):
     else:
         return blocks
 
-def get_clicked(bodies, x, y, shrink_cir=16,blocks_only=False):
 
+def get_clicked(bodies, x, y, shrink_cir=16, blocks_only=False):
     if blocks_only:
-        bodies = [bl for bl in bodies if bl.background == False and bl.foreground == False and bl.sensor["type"] == None and bl.type > 0]
+        bodies = [bl for bl in bodies if
+                  bl.background is False and bl.foreground is False and bl.sensor["type"] is None and bl.type > 0]
 
     block = None
     coords = None
@@ -288,14 +284,14 @@ def get_clicked(bodies, x, y, shrink_cir=16,blocks_only=False):
         x += bodies[0].board.translation[0]
         y += bodies[0].board.translation[1]
     except:
-        #no blocks
+        # no blocks
         pass
 
-    for i in np.arange(len(background+foreground+blocks) - 1, -1, -1):
-        if bodies != []:
+    for i in np.arange(len(background + foreground + blocks) - 1, -1, -1):
+        if bodies:
             bl = bodies[i]
 
-            is_clicked, shape = check_contains(bl.translated_position, (x, y), shrink_cir)
+            is_clicked, shape = check_contains(bl.translated_position, (x, y))
 
             if is_clicked is True:
                 block = bl
@@ -304,12 +300,12 @@ def get_clicked(bodies, x, y, shrink_cir=16,blocks_only=False):
     return block, coords
 
 
-def calculateDistance(x1, y1, x2, y2):
+def calculate_distance(x1, y1, x2, y2):
     dist = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
     return dist
 
-def poly_inside_poly(v1,inside_v2):
 
+def poly_inside_poly(v1, inside_v2):
     v1 = Polygon(v1)
     inside_v2 = Polygon(inside_v2)
 
@@ -320,45 +316,46 @@ def poly_inside_poly(v1,inside_v2):
     # if len(found) == v1_len:
     return inside_v2.covers(v1)
 
-def point_inside_polygon(x,y,poly):
 
+def point_inside_polygon(x, y, poly):
     n = len(poly)
-    inside =False
+    inside = False
 
-    p1x,p1y = poly[0]
-    for i in range(n+1):
-        p2x,p2y = poly[i % n]
-        if y > min(p1y,p2y):
-            if y <= max(p1y,p2y):
-                if x <= max(p1x,p2x):
+    p1x, p1y = poly[0]
+    for i in range(n + 1):
+        p2x, p2y = poly[i % n]
+        if y > min(p1y, p2y):
+            if y <= max(p1y, p2y):
+                if x <= max(p1x, p2x):
                     if p1y != p2y:
-                        xinters = (y-p1y)*(p2x-p1x)/(p2y-p1y)+p1x
+                        xinters = (y - p1y) * (p2x - p1x) / (p2y - p1y) + p1x
                     if p1x == p2x or x <= xinters:
                         inside = not inside
-        p1x,p1y = p2x,p2y
+        p1x, p1y = p2x, p2y
 
     return inside
+
 
 def get_poly_from_verts(v1):
     return Polygon(v1)
 
-def check_contains(v1, p1, shrink_cir=16):
+
+def check_contains(v1, p1):
     """
 
     :param v1:
     :param p1:
-    :param return_shape:
-    :param shrink_cir: Used to lower the amount of lines to create the shape - helps with fragmenting
     :return:
     """
     # polygon = v1.get_poly()
     # point = Point(p1[0], p1[1])
 
-    #return polygon.contains(point), list(polygon.exterior.coords)
+    # return polygon.contains(point), list(polygon.exterior.coords)
     for pos in v1:
-        if point_inside_polygon(p1[0],p1[1],pos):
+        if point_inside_polygon(p1[0], p1[1], pos):
             return True, p1
     return False, p1
+
 
 def get_centroid(vertexes):
     _x_list = [vertex[0] for vertex in vertexes]
@@ -366,7 +363,8 @@ def get_centroid(vertexes):
     _len = len(vertexes)
     _x = sum(_x_list) / _len
     _y = sum(_y_list) / _len
-    return (_x, _y)
+    return _x, _y
+
 
 def dent_contour(cont):
     leng = len(cont)
@@ -417,4 +415,3 @@ def rotate(points, center, angle):
     m = cv2.getRotationMatrix2D((cx, cy), angle, 1)
 
     return cv2.transform(points, m, None).astype(np.int32)
-

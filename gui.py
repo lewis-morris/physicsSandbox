@@ -1,24 +1,22 @@
 import ast
 import inspect
-
-import PySimpleGUI as sg
 import os
 
+import PySimpleGUI as sg
 import cv2
+import numpy as np
 from Box2D import b2Vec2
 from configobj import ConfigObj
-import numpy as np
 
 from draw_functions import SelectType
-from functions import get_config, convert_from_mks, convert_to_mks, get_centroid
-
+from functions import get_config, convert_from_mks, convert_to_mks
 from objects import load_state, load
 
 sg.theme('Light Blue 6')
 sg.SetOptions(font="TkHeadingFont")
 
 
-def getVariableName(variable):
+def get_variable_name(variable):
     for k, v in globals().copy().items():
         if v == variable:
             return k
@@ -102,7 +100,8 @@ def get_toolbar():
                # was pusher
                "Impulse": ["/", None, "Draw sensor that fires blocks in set direction ( / toggle)", True],  # was fire
                "Splitter": ["l", None, "Draw sensor that fragments colliding blocks (l toggle)", True],
-               "Goal": ["'", None, "Draw sensor that destroys blocks ('k' toggle)", True],
+               "Goal": ["'", None, "Draw sensor that destroys blocks (''' toggle)", True],
+               "Spawner": ["{", None, "Draw sensor that spawns blocks ('}' toggle)", True],
                "Motor Switch": ["~", None, "Draw sensor that switches the direction of a motor ('k' toggle)",
                                 True],
                "Sticky": ["%", None, "Draw sensor that lets objects stick into it ('k' toggle)", True],
@@ -110,7 +109,8 @@ def get_toolbar():
                "Enlarger": ["£", None, "Draw sensor that sensor that switches the direction of a motor ('k' toggle)",
                             True],
                "Shrinker ": ["$", None, "Draw sensor that switches the shrinks a block ('k' toggle)", True],
-               "Water": ["&", None, "Draw sensor that sensor that switches the direction of a motor ('k' toggle)", True],
+               "Water": ["&", None, "Draw sensor that sensor that switches the direction of a motor ('k' toggle)",
+                         True],
                "Low Gravity ": ["^", None, "Draw sensor that has low gravity ('k' toggle)", True],
                "Gravity Switch": ["#", None, "Draw sensor that switches gravity ('k' toggle)", True]}
 
@@ -131,7 +131,7 @@ def get_toolbar():
               "Electric": ["j", SelectType.line_join,
                            "Create an electric appearing joint between two blocks (j toggle)", True],
               "Chain": ["j", SelectType.line_join,
-                        "Create a chain joint between two blocks (j toggle)",True],
+                        "Create a chain joint between two blocks (j toggle)", True],
               "Springy Rope": ["j", SelectType.line_join, "To Fix (j toggle)", True],
               "Weld Joint": ["j", SelectType.straight_join, "Weld two blocks together (j toggle)", True],
               "Wheel Joint": ["j", SelectType.circle, "Create a wheel type joint (j toggle)", True],
@@ -156,15 +156,14 @@ def get_toolbar():
             sub_buttons.append(
                 sg.Button(button_text=k, font=("TkHeadingFont", 8), metadata=v, tooltip=v[2], size=(13, 1)))
 
-        if sub_buttons != []:
+        if sub_buttons:
             buttons.append(sub_buttons)
 
-        layout.append([sg.Frame(name, buttons, pad=(12, 8), element_justification="center", size=(200, 200))])
+        layout.append([sg.Frame(name, buttons, pad=(6, 3), element_justification="center", size=(200, 200))])
 
     # drawing section
 
     translation = {"Center Screen": ["!", SelectType.null, "Move the screen to center (! toggle)", True],
-                   "Screen Move": ["1", SelectType.select, "Move the screen position with click drag (m toggle)", True],
                    "Center Clicked": ["2", SelectType.select,
                                       "Center the board on the selected item if nothing selected clears", True]}
     player = {
@@ -197,7 +196,7 @@ def get_toolbar():
             sub_buttons.append(
                 sg.Button(button_text=k, font=("TkHeadingFont", 8), metadata=v, tooltip=v[2], size=(13, 1)))
 
-        if sub_buttons != []:
+        if sub_buttons:
             buttons_2.append(sub_buttons)
 
         layout_2.append([sg.Frame(name, buttons_2, pad=(12, 8), element_justification="center", size=(200, 10))])
@@ -326,10 +325,11 @@ def get_clicked_keys_gui(clicked):
                                                 clicked.keys[k][i][valk] = valv
                                 if valk == "hold_motor_in_place" and valv is True:
                                     joint = \
-                                    [jn.joint for jn in clicked.body.joints if jn.joint.userData["id"] == values["id"]][
-                                        0]
+                                        [jn.joint for jn in clicked.body.joints if
+                                         jn.joint.userData["id"] == values["id"]][
+                                            0]
                                     joint.limitEnabled = True
-                                    if hasattr(joint,"translation"):
+                                    if hasattr(joint, "translation"):
                                         lower = joint.translation
                                     else:
                                         lower = joint.angle
@@ -368,7 +368,7 @@ def deal_with_toolbar_event(toolbar, cur_key, cur_key_type, draw, msg):
     key = None
 
     # set the buttons enables or disabled.
-    #this sets the current clicked
+    # this sets the current clicked
     for itm in toolbar.element_list():
         if itm.Key == msg.message and not itm.metadata is None and itm.metadata[3] is True:
             itm.update(disabled=True)
@@ -379,50 +379,52 @@ def deal_with_toolbar_event(toolbar, cur_key, cur_key_type, draw, msg):
                 pass
             except AttributeError:
                 pass
-    #this sets the draw type
+    # this sets the draw type
     for i, ty in enumerate(["Polygon", "Rectangle", "Circle"]):
         if draw.draw_type == i:
             toolbar[ty].update(disabled=True)
         else:
             toolbar[ty].update(disabled=False)
 
-    if event == "expand":
-        toolbar["options"].Update(visible=not toolbar["options"].Visible)
-        toolbar["options"].Visible = not toolbar["options"].Visible
+    if not event is "":
+        if event == "expand":
+            toolbar["options"].Update(visible=not toolbar["options"].Visible)
+            toolbar["options"].Visible = not toolbar["options"].Visible
 
-    elif event == "tabs":
-        toolbar = enable_all(toolbar)
-        if cur_key_type == 0 and values["tabs"] == "move_tab":
-            cur_key_type = 1
-            msg.set_message("Create Mode Enabled")
-            draw.reset()
-        elif cur_key_type == 1 and values["tabs"] == "create_tab":
-            cur_key_type = 0
-            msg.set_message("Draw Mode Enabled")
-            draw.reset()
-
-    elif event != "__TIMEOUT__":
-
-        if event in ["Polygon", "Rectangle", "Circle"]:
-            draw.set_draw_type(["Polygon", "Rectangle", "Circle"].index(event))
-        else:
+        elif event == "tabs":
             toolbar = enable_all(toolbar)
-            data = toolbar[event].metadata
+            if cur_key_type == 0 and values["tabs"] == "move_tab":
+                cur_key_type = 1
+                msg.set_message("Create Mode Enabled")
+                draw.reset()
+            elif cur_key_type == 1 and values["tabs"] == "create_tab":
+                cur_key_type = 0
+                msg.set_message("Draw Mode Enabled")
+                draw.reset()
 
-            toolbar[event].update(disabled=toolbar[event].metadata[3])
+        elif event != "__TIMEOUT__":
 
-            draw.reset()
-            msg.set_message(event)
-            key = data[0]
-            force = True
+            if event in ["Polygon", "Rectangle", "Circle"]:
+                draw.set_draw_type(["Polygon", "Rectangle", "Circle"].index(event))
+                draw.reset()
+            else:
+                toolbar = enable_all(toolbar)
+                data = toolbar[event].metadata
 
-    else:
-        event = None
+                toolbar[event].update(disabled=toolbar[event].metadata[3])
 
-    if cur_key_type == 0:
-        toolbar["create_tab"].select()
-    elif cur_key_type == 1:
-        toolbar["move_tab"].select()
+                draw.reset()
+                msg.set_message(event)
+                key = data[0]
+                force = True
+
+        else:
+            event = None
+
+        if cur_key_type == 0:
+            toolbar["create_tab"].select()
+        elif cur_key_type == 1:
+            toolbar["move_tab"].select()
 
     return toolbar, ord(key) if not key is None else None, event, cur_key_type, draw, msg, force
 
@@ -497,10 +499,10 @@ def create_windows(block, board, selected=0):
             if not "body" in k:
                 if "length" in k or "Length" in k:
                     v[0] = convert_from_mks(v[0])
-                details.append([sg.Text(str(k) + (" (disabled)" if v[1] == True else ""), size=(25, 1)),
+                details.append([sg.Text(str(k) + (" (disabled)" if v[1] is True else ""), size=(25, 1)),
                                 sg.Checkbox(" On?", key=k, disabled=v[1], default=bool(v[0])) if type(
                                     v[0]) is bool else sg.InputText(str(v[0]), key=k, disabled=v[1], size=(18, 1))])
-
+        details.append([sg.Text("Draw On?", size=(25, 1)), sg.Checkbox(" On?", key="draw", default=current_joint.userData["draw"])])
         details.append([sg.Button("Delete", key="delete")])
 
         layout = [[sg.Column(savesLoad, key="list"), sg.Column(details, key="details")],
@@ -558,7 +560,11 @@ def update_blocks_joint(values, block, joint_index, window):
 
             except AttributeError:
                 sg.Popup(f"Unable to set '{k}'")
-            joint.userData["old_lower_upper"] = joint.limits
+
+            joint.userData["draw"] = window["draw"].get()
+
+            if "old_lower_upper" in joint.userData.keys():
+                joint.userData["old_lower_upper"] = joint.limits
             if "Rotation" in str(type(joint)):
                 joint.userData["current_position"] = joint.angle
             elif "Prismatic" in str(type(joint)):
@@ -683,7 +689,7 @@ def load_gui(timer=None, phys=None, draw=None, board=None, msg=None, persistant=
                  [sg.Listbox(values=files, size=(50, 6), select_mode=sg.LISTBOX_SELECT_MODE_SINGLE, key="files",
                              enable_events=True)],
                  [sg.Multiline("", key="blurb", size=(50, 4), disabled=True)],
-                 [sg.FileBrowse(file_types=(("Save Files", "*.save"))), sg.OK(button_text="Load")]
+                 [sg.FileBrowse(file_types=("Save Files", "*.save")), sg.OK(button_text="Load")]
                  ]
 
     layout = [[sg.TabGroup([[sg.Tab('Basic', basicLoad), sg.Tab('Load', savesLoad)]])]]
@@ -693,7 +699,7 @@ def load_gui(timer=None, phys=None, draw=None, board=None, msg=None, persistant=
         event, values = window.read(timeout=1)
 
         if event == sg.WIN_CLOSED:
-            if persistant != True:
+            if not persistant:
                 break
 
         # gui if load selected
@@ -728,7 +734,9 @@ def load_gui(timer=None, phys=None, draw=None, board=None, msg=None, persistant=
     return timer, phys, draw, board, msg
 
 
-def update_config(values, config=ConfigObj("config.cfg"), window=None):
+def update_config(values, config=None, window=None):
+    if config is None:
+        config = ConfigObj("config.cfg")
     ans = ""
     config.interpolation = False
     config.list_values = False
@@ -873,9 +881,7 @@ def load_options():
 
 
 def update_block_values(values, block):
-
-
-    #store the old translations peed
+    # store the old translations peed
     old_trans = block.translation_speed
 
     # update the block attributes
@@ -894,7 +900,7 @@ def update_block_values(values, block):
                 try:
                     v = tuple(int(values["colour"].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
                 except ValueError:
-                    #happens when user clicks colour button then doesnt fill out colour
+                    # happens when user clicks colour button then doesnt fill out colour
                     pass
 
             if hasattr(block, k):
@@ -918,38 +924,41 @@ def update_block_values(values, block):
                         except:
                             if "[" in v:
                                 if "," in v:
-                                    block.sensor["options"][k] = [float(v) for v in [val.replace("[","").replace("]","").strip() for val in v.split(",")] if v != ""]
+                                    block.sensor["options"][k] = [float(v) for v in
+                                                                  [val.replace("[", "").replace("]", "").strip() for val
+                                                                   in v.split(",")] if v != ""]
                                 elif " " in v:
-                                    block.sensor["options"][k] = [float(v) for v in [val.replace("[","").replace("]","").strip() for val in v.split(" ")] if v != ""]
+                                    block.sensor["options"][k] = [float(v) for v in
+                                                                  [val.replace("[", "").replace("]", "").strip() for val
+                                                                   in v.split(" ")] if v != ""]
                             else:
                                 block.sensor["options"][k] = v
 
                         if k == "density":
                             block.body.fixtures[0].density = float(v)
                             block.set_mass()
-            #update sollision filter
+            # update sollision filter
             for i, fix in enumerate(block.body.fixtures):
                 fix.filterData.groupIndex = int(values["groupIndex"])
-    #poly = block.get_poly(4)
+    # poly = block.get_poly(4)
 
     block.set_mass()
 
-    #makes translated blocks stay put when you change the translation
+    # makes translated blocks stay put when you change the translation
     if values["translation_speed"] != 1:
-        position = convert_from_mks(block.body.position[0],block.body.position[1])
+        position = convert_from_mks(block.body.position[0], block.body.position[1])
 
         pos = np.array(block.center + (block.board.translation * block.translation_speed))
         new_pos = np.array(block.center + (block.board.translation * float(values["translation_speed"])))
 
         pos_diff = pos - new_pos
 
-        mks_diff = convert_to_mks(pos_diff[0],pos_diff[1])
+        mks_diff = convert_to_mks(pos_diff[0], pos_diff[1])
 
-
-        block.body.position = block.body.position + b2Vec2(mks_diff[0],mks_diff[1])
+        block.body.position = block.body.position + b2Vec2(mks_diff[0], mks_diff[1])
         block.get_current_pos(force=True)
 
-    #used for setting the background etc
+    # used for setting the background etc
     if values["normal"]:
         block.background = False
         block.forground = False
@@ -980,6 +989,7 @@ def update_block(block):
                    [sg.Checkbox(text="Is Bullet?", key="bullet", default=False)],
                    [sg.Checkbox(text="Draw on?", key="force_draw", default=block.force_draw)],
                    [sg.Checkbox(text="is Player?", key="is_player", default=block.is_player)],
+                   [sg.Checkbox(text="is Enemy?", key="is_enemy", default=block.is_enemy)],
                    [sg.Text("Linear Damping"), sg.InputText(round(block.body.linearDamping, 3), key="linearDamping")],
                    [sg.Text("angularDamping"), sg.InputText(round(block.body.angularDamping, 3), key="angularDamping")],
                    [sg.Text("gravityScale"), sg.InputText(round(block.body.gravityScale, 3), key="gravityScale")],
@@ -1081,19 +1091,6 @@ def update_background(board, phys, msg):
                                      [sg.Text("None", key="middleground_path", size=(80, 1))],
                                      [sg.Text("None", key="middleground_size", visible=False, size=(50, 1))]])]
 
-    # layout = [[sg.Text("Choose Background")],
-    #           [sg.Text("Backgrounds are displayed behind ALL other elements")],
-    #           [sg.FileBrowse(key="background")],
-    #           [sg.Text("None",key="background_path",size = (80,3)),sg.Text("None",key="background_size",visible=False)],
-    #           [sg.Text("Choose Foreground")],
-    #           [sg.Text("Foregrounds are displayed in front of ALL other elements and should utilise an alpha channel")],
-    #           [sg.FileBrowse(key="foreground")],
-    #           [sg.Text("None",key="foreground_path",size = (80,3)),sg.Text("None",key="foreground_size",visible=False)],
-    #           [sg.Text("Choose Blocks Layer")],
-    #           [sg.FileBrowse(key="middleground")],
-    #           [sg.Text("None",key="middleground_path",size = (80,3)),sg.Text("None",key="middleground_size",visible=False)],
-    #           [sg.OK(button_text="Save")]
-    #           ]
 
     layout = [[sg.Column([resizetype, background, foreground, middleground])],
               [sg.Ok("Load")]]
@@ -1136,7 +1133,8 @@ def update_background(board, phys, msg):
 
             fore_img = cv2.imread(values["foreground"], -1)
             if values["toboard"]:
-                fore_img = cv2.resize(fore_img, (board.board.shape[1], board.board.shape[0]),interpolation=cv2.INTER_LANCZOS4)
+                fore_img = cv2.resize(fore_img, (board.board.shape[1], board.board.shape[0]),
+                                      interpolation=cv2.INTER_LANCZOS4)
 
             if not type(fore_img) is type(None):
                 if fore_img.shape[2] > 3:
@@ -1166,7 +1164,8 @@ def update_background(board, phys, msg):
 
             back_img = cv2.imread(values["background"])
             if values["toboard"]:
-                back_img = cv2.resize(back_img, (board.board.shape[1], board.board.shape[0]),interpolation=cv2.INTER_LANCZOS4)
+                back_img = cv2.resize(back_img, (board.board.shape[1], board.board.shape[0]),
+                                      interpolation=cv2.INTER_LANCZOS4)
 
             if not type(back_img) is type(None):
                 window["background"].metadata = {"status": "ok", "size": back_img.shape}
@@ -1182,7 +1181,8 @@ def update_background(board, phys, msg):
             mid_img = cv2.imread(values["middleground"])
 
             if values["toboard"]:
-                mid_img = cv2.resize(mid_img, (board.board.shape[1], board.board.shape[0]),interpolation=cv2.INTER_LANCZOS4)
+                mid_img = cv2.resize(mid_img, (board.board.shape[1], board.board.shape[0]),
+                                     interpolation=cv2.INTER_LANCZOS4)
 
             if not type(mid_img) is type(None):
                 window["middleground"].metadata = {"status": "ok", "size": mid_img.shape}
@@ -1201,7 +1201,7 @@ def update_background(board, phys, msg):
             # once all complete then load into the board and close.
 
             if sum([1 if window[x].metadata["status"] == "ok" else 0 for x in types]) == len(types):
-                sizes = [window[x].metadata["size"] for x in types if x != None]
+                sizes = [window[x].metadata["size"] for x in types if x is not None]
                 set_size = set(sizes)
                 if len(sizes) == len(set_size):
                     ans = sg.popup("All images must be the same size. Please fix before continuing.",
@@ -1234,7 +1234,7 @@ def get_select_joints_with_motor(clicked):
                 except:
                     pass
         if len(items) > 0:
-            layout.append([sg.Listbox(values=(items), size=(30, 3), key="listbox", enable_events=True)])
+            layout.append([sg.Listbox(values=items, size=(30, 3), key="listbox", enable_events=True)])
 
             window = sg.Window('Attach Keys', layout)
             while True:

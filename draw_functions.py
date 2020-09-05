@@ -1,12 +1,13 @@
 from enum import Enum
-from shapely.geometry import Polygon
-from functions import calculateDistance
+from math import cos, sin
+
 import numpy as np
-from math import cos,sin,tan
+from shapely.geometry import Polygon
+
+from functions import calculate_distance
 
 
 class SelectType(Enum):
-
     draw = "0"
     rectangle = "1"
     circle = "2"
@@ -29,6 +30,7 @@ class SelectType(Enum):
     line_join2 = "18"
     select_or_click = "19"
 
+
 def rotate_point(origin, point, angle):
     """
     Rotate a point counterclockwise by a given angle around a given origin.
@@ -42,16 +44,13 @@ def rotate_point(origin, point, angle):
     qy = oy + sin(angle) * (px - ox) + cos(angle) * (py - oy)
     return qx, qy
 
-def createRectangle(x, y, w, h):
+
+def create_rectangle(x, y, w, h):
     xmin = int(x)
     xmax = int(x) + int(w)
     ymin = int(y)
     ymax = int(y) + int(h)
-    lst_pnts = []
-    lst_pnts.append((xmin, ymin))
-    lst_pnts.append((xmin, ymax))
-    lst_pnts.append((xmax, ymax))
-    lst_pnts.append((xmax, ymin))
+    lst_pnts = [(xmin, ymin), (xmin, ymax), (xmax, ymax), (xmax, ymin)]
     return np.array(lst_pnts)
 
 
@@ -59,16 +58,17 @@ def enlarge_image(img):
     h, w, _ = img.shape
 
     ma = np.max(img.shape)
-    back = np.zeros((int(ma*1.4), int(ma*1.4), img.shape[2]))
+    back = np.zeros((int(ma * 1.4), int(ma * 1.4), img.shape[2]))
     print(back.shape)
     hh, ww, _ = back.shape
 
-    yoff = round((hh-h)/2)
-    xoff = round((ww-w)/2)
+    yoff = round((hh - h) / 2)
+    xoff = round((ww - w) / 2)
 
     result = back.copy()
-    result[yoff:yoff+h, xoff:xoff+w] = img
+    result[yoff:yoff + h, xoff:xoff + w] = img
     return result
+
 
 #
 # def rotation(draw,phys,event,x,y,type):
@@ -76,7 +76,7 @@ def enlarge_image(img):
 #         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
 #                                                       allow_clicked=False, log_clicked=False,
 #                                                       allow_multiple=True)
-#         if ans == True:
+#         if ans is True:
 #             phys.create_rotation_joint(draw.player_list[0], draw.player_list[1], draw.locations[-1])
 #             draw.reset()
 #
@@ -87,7 +87,7 @@ def enlarge_image(img):
 #         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
 #                                                       allow_clicked=True, log_clicked=True,
 #                                                       allow_multiple=False)
-#         if ans == True:
+#         if ans is True:
 #             if len(draw.player_list) > 0:
 #                 try:
 #                     for bl in draw.player_list:
@@ -109,7 +109,7 @@ def enlarge_image(img):
 #         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type,
 #                                                       allow_clicked=True, log_clicked=True,
 #                                                       allow_multiple=False)
-#         if ans == True:
+#         if ans is True:
 #             phys.create_block(pos=draw.locations[0])
 #             draw.reset()
 #
@@ -196,7 +196,7 @@ def enlarge_image(img):
 #
 #         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, "a" + str(SelectType.length.value), False)
 #
-#         if ans == True:
+#         if ans is True:
 #             distance = calculateDistance(draw.locations[0][0], draw.locations[0][1], draw.locations[-1][0],
 #                                          draw.locations[-1][1])
 #             phys.create_rope_joint(draw.player_list[0], draw.player_list[1], draw.anchorA, draw.anchorB,
@@ -358,7 +358,7 @@ def enlarge_image(img):
 #
 #     if draw.stage == 1:
 #         draw, phys, ans = player_draw_click_or_circle(draw, phys, event, x, y, type[0] + str(SelectType.vector_direction.value), False)
-#         if ans == True:
+#         if ans is True:
 #             phys.block_list[-1].booster = draw.vector
 #             draw.reset()
 #
@@ -620,32 +620,32 @@ def enlarge_image(img):
 #         draw.reset()
 #         return draw, phys, False
 #
-def get_enlongated_line(coordsStart):
-    changes = 999
+def get_enlongated_line(coords_start):
     new_coords = []
     while True:
         changes = 0
-        if new_coords == []:
-            coords = coordsStart
+        if not new_coords:
+            coords = coords_start
         new_coords = []
-        for i in range(len(coords)-2):
-            pointA = coords[i]
-            pointB = coords[i+1]
-            distance = calculateDistance(pointA[0],pointA[1],pointB[0],pointB[1])
-            new_coords.append(pointA)
-            if distance >10:
-                new_coords.append( ( ((pointA[0]+pointB[0])/2),((pointA[1]+pointB[1])/2) ))
+        for i in range(len(coords) - 2):
+            point_a = coords[i]
+            point_b = coords[i + 1]
+            distance = calculate_distance(point_a[0], point_a[1], point_b[0], point_b[1])
+            new_coords.append(point_a)
+            if distance > 10:
+                new_coords.append((((point_a[0] + point_b[0]) / 2), ((point_a[1] + point_b[1]) / 2)))
                 changes += 1
 
-            if i == len(coords)-3:
-                new_coords.append(pointB)
+            if i == len(coords) - 3:
+                new_coords.append(point_b)
 
         coords = new_coords
         if changes == 0:
             break
     return coords
-def get_poly_from_two_rectangle_points(loca,locb):
 
+
+def get_poly_from_two_rectangle_points(loca, locb):
     arr = np.array((loca, [locb[0], loca[1]], locb, [loca[0], locb[1]]))
     poly = Polygon(arr)
     return poly
