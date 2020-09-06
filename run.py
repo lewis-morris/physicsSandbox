@@ -19,7 +19,7 @@ def add(event, x, y, flags, param):
     x_new = (x + board.translation[0] * -1)
     y_new = (y + board.translation[1] * -1)
 
-    #check for screen move
+    # check for screen move
     if event == cv2.EVENT_MBUTTONDOWN or draw.move_screen:
         """
         Used to move the screen
@@ -28,11 +28,11 @@ def add(event, x, y, flags, param):
             draw.move_screen = True
         draw, board = move_screen(draw, board, x_new, y_new, event)
 
-    #check if no key
+    # check if no key
     if (cur_key is None or cur_key == "") and (not draw.move_screen or not event == cv2.EVENT_MBUTTONDOWN):
         return
 
-    #check all other keys
+    # check all other keys
     if cur_key[0] == "1" and cur_key_type == 0:
         """
         Used to create fire blocks or create them.
@@ -207,7 +207,7 @@ def add(event, x, y, flags, param):
         draw, phys = select_blocks(draw, phys, event, x_new, y_new, cur_key)
         if len(draw.player_list) >= 1:
             draw.player_list[0] = update_block(draw.player_list[0])
-            phys.block_list = sorted(phys.block_list,key=lambda itm:itm.draw_position)
+            phys.block_list = sorted(phys.block_list, key=lambda itm: itm.draw_position)
             draw.reset()
 
     elif cur_key[0] == "4" and cur_key_type == 0:
@@ -223,10 +223,9 @@ def add(event, x, y, flags, param):
         """
         Used to set spawn point
         """
-        draw, phys, ans, coords = get_spawn(draw, phys, event,  x_new, y_new, cur_key)
+        draw, phys, ans, coords = get_spawn(draw, phys, event, x_new, y_new, cur_key)
 
         if ans:
-
             h, w, _ = board.board.shape
 
             max_x, max_y = np.round(np.max(coords, axis=0)).astype(int)
@@ -274,12 +273,11 @@ def add(event, x, y, flags, param):
 
         else:
             if msg.message == "Clone Move":
-                draw, phys = move_clone(draw, phys, x_new, y_new, event, True,board=True)
+                draw, phys = move_clone(draw, phys, x_new, y_new, event, True, board=True, move=False)
             elif msg.message == "Normal Move":
-                draw, phys = move_clone(draw, phys, x_new, y_new, event, False, board=True,joint_move = False)
+                draw, phys = move_clone(draw, phys, x_new, y_new, event, False, board=True, joint_move=False, move=True)
             elif msg.message == "Joint Move":
-                draw, phys = move_clone(draw, phys, x_new, y_new, event, False, board=True,joint_move = True)
-
+                draw, phys = move_clone(draw, phys, x_new, y_new, event, False, board=True, joint_move=True, move=True)
 
             phys.set_active()
 
@@ -351,7 +349,7 @@ def add(event, x, y, flags, param):
         """
         Used to attach a motor spin forwards
         """
-        draw, phys = attach_motor_spin(draw, phys, event, x_new, y_new, cur_key, board,clockwise=False)
+        draw, phys = attach_motor_spin(draw, phys, event, x_new, y_new, cur_key, board, clockwise=False)
 
     elif cur_key[0] == "4" and cur_key_type == 1:
         """
@@ -396,7 +394,6 @@ def add(event, x, y, flags, param):
         """
         draw, phys = add_impulse(draw, phys, event, x_new, y_new, cur_key, board, relative=True)
 
-
     # this moves the screen based on if the mouse is on the edge of the screen - hard to get to the controls
     if phys.options["screen"]["allow_x_move"] is True:
         if old_x < board.board.shape[1] * .15:
@@ -415,32 +412,28 @@ def add(event, x, y, flags, param):
             board.y_trans_do = None
 
 
-
-
 if __name__ == "__main__":
 
     # init the physics engine, board, and timer.
     timer, phys, draw, board, msg = load_gui(persistant=True)
 
-
-    #load config
+    # load config
     config = phys.config
 
-
-    #init other running vars
+    # init other running vars
     force = False
     loops = 0
     timeStep = 1.0 / 50
     cur_key = ""
     cur_key_type = 0
 
-    #key_type = 1
+    # key_type = 1
 
     # set window name and mouse callback for mouse events
     cv2.namedWindow("Board")
     cv2.setMouseCallback("Board", add)
 
-    #get the tool bar
+    # get the tool bar
     toolbar = get_toolbar()
 
     # start loop
@@ -450,11 +443,13 @@ if __name__ == "__main__":
     while board.run:
 
         # read toolbar
-        toolbar, key, name, cur_key_type, draw, msg, force  = deal_with_toolbar_event(toolbar, cur_key, cur_key_type, draw, msg)
+        toolbar, key, name, cur_key_type, draw, msg, force = deal_with_toolbar_event(toolbar, cur_key, cur_key_type,
+                                                                                     draw, msg)
 
         # move to snap to board
         if loops % 10 == 0:
-            toolbar.move(cv2.getWindowImageRect("Board")[0] + board.board.shape[1], cv2.getWindowImageRect("Board")[1] - 53)
+            toolbar.move(cv2.getWindowImageRect("Board")[0] + board.board.shape[1],
+                         cv2.getWindowImageRect("Board")[1] - 53)
 
         # get key press
         if key is None:
@@ -470,7 +465,7 @@ if __name__ == "__main__":
         # draw physics
         phys.draw_blocks()
 
-        # draw front of boardgg
+        # draw front of board
         board.draw_front()
 
         # draw joints
@@ -484,7 +479,6 @@ if __name__ == "__main__":
 
         # show board
         cv2.imshow("Board", board.board_copy[:, :, ::-1])
-
 
         # timer log - this handles FPS
         timer.log()

@@ -1224,6 +1224,8 @@ def player_draw_click_or_circle(draw, phys, event, x, y, type, allow_clicked=Tru
                     draw.log_player(clicked)
                     if type[1:] == SelectType.bullet_direction.value:
                         phys.set_can_fire(clicked)
+                        draw.reset()
+
             else:
                 return draw, phys, clicked
 
@@ -1638,7 +1640,7 @@ def clone_players(draw, phys):
     # get items
     item_list = []
     for bl in draw.player_list:
-        item_list.append(phys.save_block_as_dict(bl, True))
+        item_list.append(phys.save_block_as_dict(bl, True, move=True))
 
     # clone them
     new_obs = phys.create_pre_def_block(item_list, convert_joints=False, clone=True)
@@ -1657,7 +1659,7 @@ def move_players(draw, phys, board, joint_move=False):
         # get last player
         bl = draw.player_list[i]
         # pickle the details
-        bl_dic = phys.save_block_as_dict(bl)
+        bl_dic = phys.save_block_as_dict(bl, move=True)
         # update the position
         bl_dic["body"]["position"][0] += convert_to_mks(x_dif)
         bl_dic["body"]["position"][1] += convert_to_mks(y_dif)
@@ -1698,7 +1700,7 @@ def move_players(draw, phys, board, joint_move=False):
     return draw, phys
 
 
-def move_clone(draw, phys, x=None, y=None, event=None, clone=None, board=None, joint_move=False):
+def move_clone(draw, phys, x=None, y=None, event=None, clone=None, board=None, joint_move=False,move=None):
     if event == cv2.EVENT_LBUTTONDOWN:
 
         # for moving selected

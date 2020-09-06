@@ -146,7 +146,6 @@ def load_state(pickle_name):
     board = pickle_dic["board"]
     msg = pickle_dic["msg"]
 
-
     phys = Physics(pickle_dic["phys"]["options"]["physics"]["gravity"], config)
 
     for k, v in pickle_dic["phys"].items():
@@ -697,11 +696,12 @@ class Physics():
                             board.palette.set_palllette(palette)
 
     def set_can_fire(self, fire_bl):
-        for bl in self.block_list:
-            if bl is fire_bl:
-                bl.can_fire = True
-            else:
-                bl.can_fire = False
+        if fire_bl.is_player:
+            for bl in self.block_list:
+                if bl is fire_bl:
+                    bl.can_fire = True
+                else:
+                    bl.can_fire = False
 
     def kill_all(self, static=True, terrain=False):
         for i in np.arange(len(self.block_list) - 1, -1, -1):
@@ -715,7 +715,7 @@ class Physics():
                 if not block.static:
                     self.delete(block)
 
-    def save_block_as_dict(self, block, clone=False):
+    def save_block_as_dict(self, block, clone=False,move=False):
 
         """
         used to split the block into a dict of information for pickling
@@ -798,17 +798,18 @@ class Physics():
 
             for attr in normal_attributes:
 
-                if attr is "anchorA" and hasattr(joint.joint, "anchorA"):
-                    anc = joint.joint.anchorA
-                    joints_dic["anchorA"] = [anc.x, anc.y]
-                elif attr is "anchorB" and hasattr(joint.joint, "anchorB"):
-                    anc = joint.joint.anchorB
-                    joints_dic["anchorB"] = [anc.x, anc.y]
-                elif attr is "bodyA" and hasattr(joint.joint, "bodyA"):
+                if attr == "anchorA" and hasattr(joint.joint, "anchorA"):
+                    anc = [joint.joint.anchorA.x, joint.joint.anchorA.y]
+                    joints_dic["anchorA"] = anc
+
+                elif attr == "anchorB" and hasattr(joint.joint, "anchorB"):
+                    anc = [joint.joint.anchorB.x, joint.joint.anchorB.y]
+                    joints_dic["anchorB"] = anc
+                elif attr == "bodyA" and hasattr(joint.joint, "bodyA"):
                     joints_dic["bodyA"] = joint.joint.bodyA.userData["ob"].id if not clone or block.id != \
                                                                                  joint.joint.bodyA.userData[
                                                                                      "ob"].id else clone_id
-                elif attr is "bodyB" and hasattr(joint.joint, "bodyB"):
+                elif attr == "bodyB" and hasattr(joint.joint, "bodyB"):
                     joints_dic["bodyB"] = joint.joint.bodyB.userData["ob"].id if not clone or block.id != \
                                                                                  joint.joint.bodyB.userData[
                                                                                      "ob"].id else clone_id
@@ -843,8 +844,27 @@ class Physics():
 
             # save joints userdata
             current_joint_userData = {}
+
             for k, v in joint.joint.userData.items():
-                if "b2" in str(type(v)):
+                if (clone or move) and k == "bodyA":
+                    bl = self.get_block_by_id(joints_dic["bodyA"])
+                    current_joint_userData[k] = {}
+                    current_joint_userData[k]["id"] = joints_dic["bodyA"]
+                    current_joint_userData[k]["position"] = str(bl.body.position).replace("b2Vec2", "")
+                    current_joint_userData[k]["worldCenter"] = str(bl.body.worldCenter).replace("b2Vec2", "")
+                    current_joint_userData[k]["rotation"] =  bl.body.angle
+                    current_joint_userData[k]["anchorA"] = str(joint.joint.anchorA).replace("b2Vec2", "")
+
+                elif (clone or move) and k == "bodyB":
+                    bl = self.get_block_by_id(joints_dic["bodyB"])
+                    current_joint_userData[k] = {}
+                    current_joint_userData[k]["id"] = joints_dic["bodyB"]
+                    current_joint_userData[k]["position"] = str(bl.body.position).replace("b2Vec2", "")
+                    current_joint_userData[k]["worldCenter"] = str(bl.body.worldCenter).replace("b2Vec2", "")
+                    current_joint_userData[k]["rotation"] =  bl.body.angle
+                    current_joint_userData[k]["anchorB"] = str(joint.joint.anchorB).replace("b2Vec2", "")
+
+                elif "b2" in str(type(v)):
                     current_joint_userData[k] = str(type(v))
                 else:
                     current_joint_userData[k] = v
@@ -997,6 +1017,7 @@ class Physics():
         jointsUser = [x["joints_userData"] for x in info if x["joints_userData"] != {}]
         i = 0
         new_joints = {}
+        pos_world = {}
         for joint, user in zip(joints, jointsUser):
             for (jk, jv), (uk, uv) in zip(joint.items(), user.items()):
                 if jv not in new_joints.values():
@@ -1011,10 +1032,19 @@ class Physics():
                         aoldpos = b2Vec2(a.body.position[0], a.body.position[1])
                         aOldWorldCen = b2Vec2(a.body.worldCenter[0], a.body.worldCenter[1])
                         aoldangle = a.body.angle
+                        if not a.id in pos_world:
+                            pos_world[a.id] = {"angle": a.body.angle,
+                                               "position": b2Vec2(a.body.position[0], a.body.position[1]),
+                                               "worldCenter": b2Vec2(a.body.worldCenter[0], a.body.worldCenter[1])}
 
                         bOldWorldCen = b2Vec2(b.body.worldCenter[0], b.body.worldCenter[1])
                         boldpos = b2Vec2(b.body.position[0], b.body.position[1])
                         boldangle = b.body.angle
+
+                        if not a.id in pos_world:
+                            pos_world[a.id] = {"angle": b.body.angle,
+                                               "position": b2Vec2(b.body.position[0], b.body.position[1]),
+                                               "worldCenter": b2Vec2(b.body.worldCenter[0], b.body.worldCenter[1])}
 
                         # get position of joint when created.
                         apos = [float(x.replace("(", "").replace(")", "")) for x in uv["bodyA"]["position"].split(",")]
@@ -1133,7 +1163,6 @@ class Physics():
         return new_obs
 
     def get_block_by_id(self, id):
-
         blocks = [bl for bl in self.block_list if bl.id == id]
         if blocks != []:
             return blocks[-1]
@@ -1143,7 +1172,6 @@ class Physics():
                     return bl
 
     def fractal_split(self, block, allow_another=True, convert=False, board=None):
-
         if not type(block) == list:
             block = [block]
 
@@ -1204,7 +1232,6 @@ class Physics():
             # delete_list.append(i)
 
     def fractal_create(self, shape, static=True, convert=False, terrain=False):
-
         shape = shape[:-1]
         if len(shape) <= 4:
             shape = dent_contour(shape)
@@ -1228,14 +1255,12 @@ class Physics():
         return blocks
 
     def fractal_block(self, ob, create=True, static=True, allow_another=True, convert=False, board=None):
-
         if create is True:
             self.fractal_create(ob, static, convert=convert)
         elif create is False:
             self.fractal_split(ob, allow_another=allow_another, convert=convert)
 
     def get_rand_val(self, main, sub):
-
         if sub + "_min" in config[main]:
             min = self.options[main][sub + "_min"]
             max = self.options[main][sub + "_max"]
@@ -1249,7 +1274,7 @@ class Physics():
 
     def create_block(self, shape=None, pos=None, rest=None, density=None, friction=None, poly_type=None,
                      set_sprite=False, draw_static=True, size=None, static=False, draw=None, sq_points=False,
-                     foreground=False, force_static_block=False,sensor_created=False):
+                     foreground=False, force_static_block=False, sensor_created=False):
         """
         Create the block object
 
@@ -1271,16 +1296,6 @@ class Physics():
 
         shapes = []
 
-        # clone best
-        if size is None:
-            size = self.get_rand_val("blocks", "size")
-        if rest is None:
-            rest = self.get_rand_val("blocks", "rest")
-        if density is None:
-            density = self.get_rand_val("blocks", "density")
-        if friction is None:
-            friction = self.get_rand_val("blocks", "friction")
-
         # get the type
 
         if poly_type is None:
@@ -1288,6 +1303,21 @@ class Physics():
             player_options = [k for k, v in self.options["blocks_out"]["player_type"].items() if v == True]
             poly_type = random.choice(
                 [list(self.options["blocks_out"]["player_type"].keys()).index(x) + 1 for x in player_options])
+
+        # clone best
+        if poly_type < 0:
+            blo = "static_blocks"
+        else:
+            blo = "blocks"
+
+        if size is None:
+            size = self.get_rand_val("blocks", "size")
+        if rest is None:
+            rest = self.get_rand_val(blo, "rest")
+        if density is None:
+            density = self.get_rand_val("blocks", "density")
+        if friction is None:
+            friction = self.get_rand_val(blo, "friction")
 
         # get the shape of the item
 
@@ -1339,7 +1369,8 @@ class Physics():
                                       fixtures=b2FixtureDef(
                                           shape=b2PolygonShape(vertices=shapes),
                                           density=size)),
-                          set_sprite=set_sprite, draw_static=draw_static, poly_type=poly_type, board=self.board, sensor_created=sensor_created)
+                          set_sprite=set_sprite, draw_static=draw_static, poly_type=poly_type, board=self.board,
+                          sensor_created=sensor_created)
 
                 )
                 self.block_list[-1].body.fixtures[0].restitution = self.options["static_blocks"]["rest"]
@@ -1358,7 +1389,8 @@ class Physics():
                                       fixtures=b2FixtureDef(
                                           shape=b2CircleShape(radius=rad),
                                           density=density))
-                          , set_sprite=set_sprite, poly_type=poly_type, static_shape=True, board=self.board,sensor_created=sensor_created)
+                          , set_sprite=set_sprite, poly_type=poly_type, static_shape=True, board=self.board,
+                          sensor_created=sensor_created)
                 )
             except AssertionError:
                 print("circle creation error, check me")
@@ -1378,7 +1410,8 @@ class Physics():
                                       fixtures=b2FixtureDef(
                                           shape=b2PolygonShape(vertices=shapes),
                                           density=density))
-                          , False, set_sprite=set_sprite, poly_type=poly_type, board=self.board,sensor_created=sensor_created)
+                          , False, set_sprite=set_sprite, poly_type=poly_type, board=self.board,
+                          sensor_created=sensor_created)
                 )
 
                 # check if config says to set sprite and load if so
@@ -1402,7 +1435,7 @@ class Physics():
                                       fixtures=b2FixtureDef(
                                           shape=b2CircleShape(radius=rad),
                                           density=density))
-                          , set_sprite=set_sprite, poly_type=poly_type, board=self.board,sensor_created=sensor_created)
+                          , set_sprite=set_sprite, poly_type=poly_type, board=self.board, sensor_created=sensor_created)
                 )
                 # check if config says to set sprite and load if so
                 if self.options["squares"]["sprite_on"]:
@@ -1441,7 +1474,6 @@ class Physics():
         return True
 
     def merge_blocks(self, bl_list=None, is_terrain=False):
-
         if bl_list is None:
             bls = [bl for bl in self.block_list if bl.is_terrain]
         else:
@@ -1569,7 +1601,8 @@ class Physics():
                         elif act["type"] == "spawner" and act["complete"] is False:
                             if (contains_poly and act["fire_action_once_contained"]) or not act[
                                 "fire_action_once_contained"]:
-                                self.create_block(pos=convert_from_mks(sensor.body.position),size=act["size"],sensor_created=True)
+                                self.create_block(pos=convert_from_mks(sensor.body.position), size=act["size"],
+                                                  sensor_created=True)
                                 act["complete"] = True
 
                         elif act["type"] == "center" and act["complete"] is False:
@@ -1759,7 +1792,6 @@ class Physics():
                 bl.body.alive = True
 
     def check_player_translation(self):
-
         if self.block_list != []:
             # get all positions
             for bl in self.block_list:
@@ -1826,7 +1858,8 @@ class Physics():
                     col = self.board.palette.current_palette[self.board.palette.point]
 
                     self.board.board_copy = cv2.circle(self.board.board_copy,
-                                                       tuple(np.array([int(x) for x in an]) + self.board.translation), 1,
+                                                       tuple(np.array([int(x) for x in an]) + self.board.translation),
+                                                       1,
                                                        col, -1)
                 elif type(jn) == b2PulleyJoint:
                     col = self.board.palette.current_palette[self.board.palette.joint]
@@ -1838,11 +1871,13 @@ class Physics():
 
                     self.board.board_copy = cv2.line(self.board.board_copy,
                                                      tuple(np.array([int(x) for x in startA]) + self.board.translation),
-                                                     tuple(np.array([int(x) for x in endA]) + self.board.translation), col,
+                                                     tuple(np.array([int(x) for x in endA]) + self.board.translation),
+                                                     col,
                                                      2)
                     self.board.board_copy = cv2.line(self.board.board_copy,
                                                      tuple(np.array([int(x) for x in startB]) + self.board.translation),
-                                                     tuple(np.array([int(x) for x in endB]) + self.board.translation), col,
+                                                     tuple(np.array([int(x) for x in endB]) + self.board.translation),
+                                                     col,
                                                      2)
 
                 else:
@@ -1856,15 +1891,16 @@ class Physics():
 
                     try:
                         self.board.board_copy = cv2.line(self.board.board_copy,
-                                                         tuple(np.array([int(x) for x in start]) + self.board.translation),
-                                                         tuple(np.array([int(x) for x in end]) + self.board.translation),
+                                                         tuple(np.array(
+                                                             [int(x) for x in start]) + self.board.translation),
+                                                         tuple(
+                                                             np.array([int(x) for x in end]) + self.board.translation),
                                                          col,
                                                          2)
                     except:
                         pass
 
     def create_weld_joint(self, a, b, pos, convert=True):
-
         self.world.CreateWeldJoint(bodyA=a.body,
                                    bodyB=b.body,
                                    anchor=(convert_to_mks(pos[0], pos[1]) if convert else pos))
@@ -1875,20 +1911,21 @@ class Physics():
         a.body.awake = True
 
         self.world.joints[-1].userData = {
-            "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),"draw":True}
+            "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)), "draw": True}
 
-        self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+        self.world.joints[-1].userData["bodyA"] = {"id":a.id,
+                                                   "position": str(a.body.position).replace("b2Vec2", ""),
                                                    "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
                                                    "rotation": a.body.angle,
                                                    "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2", "")}
 
-        self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+        self.world.joints[-1].userData["bodyB"] = {"id":b.id,
+                                                   "position": str(b.body.position).replace("b2Vec2", ""),
                                                    "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
                                                    "rotation": b.body.angle,
                                                    "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2", "")}
 
     def create_rotation_joint(self, a, b, pos, convert=True):
-
         if not a is b:
             self.world.CreateRevoluteJoint(bodyA=a.body,
                                            bodyB=b.body,
@@ -1899,27 +1936,28 @@ class Physics():
             a.body.awake = True
 
             self.world.joints[-1].userData = {
-                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),"draw":True}
+                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)), "draw": True}
 
             self.world.joints[-1].userData["old_lower_upper"] = self.world.joints[-1].limits
             self.world.joints[-1].userData["key"] = None
             self.world.joints[-1].userData["current_position"] = self.world.joints[-1].angle
             self.world.joints[-1].userData["times_allowed"] = 3
 
-            self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+            self.world.joints[-1].userData["bodyA"] = {"id": a.id,
+                                                       "position": str(a.body.position).replace("b2Vec2", ""),
                                                        "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
                                                        "rotation": a.body.angle,
                                                        "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2",
                                                                                                              "")}
 
-            self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+            self.world.joints[-1].userData["bodyB"] = {"id": b.id,
+                                                       "position": str(b.body.position).replace("b2Vec2", ""),
                                                        "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
                                                        "rotation": b.body.angle,
                                                        "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2",
                                                                                                              "")}
 
     def create_mouse_joint(self, a, x, y):
-
         if len(self.world.bodies) < 2:
             print("Mouse joint creation error - must have 2+ bodies created)")
             return
@@ -1937,10 +1975,9 @@ class Physics():
         a.body.awake = True
 
         self.world.joints[-1].userData = {
-            "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),"draw":True}
+            "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)), "draw": True}
 
     def create_prismatic(self, a, b, vector, anchor, distance, convert=True):
-
         if convert:
             anchor = convert_to_mks(anchor[0], anchor[1])
 
@@ -1950,23 +1987,24 @@ class Physics():
 
             self.world.joints[-1].userData = {
                 "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),
-                "vector": (vector[0], vector[1]),"draw":True}
+                "vector": (vector[0], vector[1]), "draw": True}
             self.world.joints[-1].userData["old_lower_upper"] = self.world.joints[-1].limits
             self.world.joints[-1].userData["key"] = None
             self.world.joints[-1].userData["current_position"] = self.world.joints[-1].translation
 
-            self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+            self.world.joints[-1].userData["bodyA"] = {"id": a.id,
+                                                       "position": str(a.body.position).replace("b2Vec2", ""),
                                                        "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
                                                        "rotation": a.body.angle,
                                                        "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2",
                                                                                                              "")}
 
-            self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+            self.world.joints[-1].userData["bodyB"] = {"id": b.id,
+                                                       "position": str(b.body.position).replace("b2Vec2", ""),
                                                        "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
                                                        "rotation": b.body.angle,
                                                        "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2",
                                                                                                              "")}
-
             b.body.active = True
             b.body.awake = True
 
@@ -1989,19 +2027,19 @@ class Physics():
         a.body.active = True
         a.body.awake = True
         self.world.joints[-1].userData = {
-            "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),"draw":True}
+            "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)), "draw": True}
 
-        self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+        self.world.joints[-1].userData["bodyA"] = {"id":a.id,
+                                                   "position": str(a.body.position).replace("b2Vec2", ""),
                                                    "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
                                                    "rotation": a.body.angle,
                                                    "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2", "")}
 
-        self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+        self.world.joints[-1].userData["bodyB"] = {"id":b.id,
+                                                   "position": str(b.body.position).replace("b2Vec2", ""),
                                                    "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
                                                    "rotation": b.body.angle,
                                                    "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2", "")}
-
-
     def create_chain(self, a, b, lines, stretchy=False):
         last_ob = 0
         end = False
@@ -2065,17 +2103,20 @@ class Physics():
                                                anchor=convert_to_mks(line1[0], line1[1]),
                                                collideConnected=False)
                 self.world.joints[-1].userData = {
-                    "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),"draw":True}
+                    "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),
+                    "draw": True}
 
-                self.world.joints[-1].userData["bodyA"] = {"position": str(blockA.position).replace("b2Vec2", ""),
-                                                           "worldCenter": str(blockA.worldCenter).replace("b2Vec2", ""),
-                                                           "rotation": blockA.angle,
+                self.world.joints[-1].userData["bodyA"] = {"id": a.id,
+                                                           "position": str(a.body.position).replace("b2Vec2", ""),
+                                                           "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
+                                                           "rotation": a.body.angle,
                                                            "anchorA": str(self.world.joints[-1].anchorA).replace(
                                                                "b2Vec2", "")}
 
-                self.world.joints[-1].userData["bodyB"] = {"position": str(blockB.position).replace("b2Vec2", ""),
-                                                           "worldCenter": str(blockB.worldCenter).replace("b2Vec2", ""),
-                                                           "rotation": blockB.angle,
+                self.world.joints[-1].userData["bodyB"] = {"id": b.id,
+                                                           "position": str(b.body.position).replace("b2Vec2", ""),
+                                                           "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
+                                                           "rotation": b.body.angle,
                                                            "anchorB": str(self.world.joints[-1].anchorB).replace(
                                                                "b2Vec2", "")}
 
@@ -2136,20 +2177,21 @@ class Physics():
                                            anchor=((blockA.worldCenter.x + blockB.worldCenter.x) / 2,
                                                    (blockA.worldCenter.y + blockB.worldCenter.y) / 2))
             self.world.joints[-1].userData = {
-                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),"draw":True}
+                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)), "draw": True}
 
-            self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+            self.world.joints[-1].userData["bodyA"] = {"id": a.id,
+                                                       "position": str(a.body.position).replace("b2Vec2", ""),
                                                        "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
                                                        "rotation": a.body.angle,
                                                        "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2",
                                                                                                              "")}
 
-            self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+            self.world.joints[-1].userData["bodyB"] = {"id": b.id,
+                                                       "position": str(b.body.position).replace("b2Vec2", ""),
                                                        "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
                                                        "rotation": b.body.angle,
                                                        "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2",
                                                                                                              "")}
-
             blockB.active = True
             blockB.awake = True
             blockA.active = True
@@ -2205,20 +2247,21 @@ class Physics():
                                                lines[-1][0], lines[-1][1]),
                                            collideConnected=False)
             self.world.joints[-1].userData = {
-                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),"draw":True}
+                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)), "draw": True}
 
-            self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+            self.world.joints[-1].userData["bodyA"] = {"id": a.id,
+                                                       "position": str(a.body.position).replace("b2Vec2", ""),
                                                        "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
                                                        "rotation": a.body.angle,
                                                        "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2",
                                                                                                              "")}
 
-            self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+            self.world.joints[-1].userData["bodyB"] = {"id": b.id,
+                                                       "position": str(b.body.position).replace("b2Vec2", ""),
                                                        "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
                                                        "rotation": b.body.angle,
                                                        "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2",
                                                                                                              "")}
-
             blockB.active = True
             blockB.awake = True
             blockA.active = True
@@ -2231,7 +2274,6 @@ class Physics():
                 return
 
     def create_distance_joint(self, a, b, aAnchor, bAnchor, convert=True):
-
         if convert:
             aAnchor = convert_to_mks(aAnchor[0], aAnchor[1])
             bAnchor = convert_to_mks(bAnchor[0], bAnchor[1])
@@ -2243,22 +2285,22 @@ class Physics():
                                            collideConnected=True)
 
             self.world.joints[-1].userData = {
-                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),"draw":True}
+                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)), "draw": True}
 
-            self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+            self.world.joints[-1].userData["bodyA"] = {"id": a.id,
+                                                       "position": str(a.body.position).replace("b2Vec2", ""),
                                                        "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
                                                        "rotation": a.body.angle,
                                                        "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2",
                                                                                                              "")}
 
-            self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+            self.world.joints[-1].userData["bodyB"] = {"id": b.id,
+                                                       "position": str(b.body.position).replace("b2Vec2", ""),
                                                        "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
                                                        "rotation": b.body.angle,
                                                        "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2",
                                                                                                              "")}
-
     def create_rope_joint(self, a, b, aAnchor, bAnchor, maxLength, convert=True):
-
         if convert:
             maxLength = convert_to_mks(maxLength)
             aAnchor = convert_to_mks(aAnchor[0], aAnchor[1])
@@ -2272,15 +2314,17 @@ class Physics():
                                        collideConnected=True)
 
             self.world.joints[-1].userData = {
-                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),"draw":True}
+                "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)), "draw": True}
 
-            self.world.joints[-1].userData["bodyA"] = {"position": str(a.body.position).replace("b2Vec2", ""),
+            self.world.joints[-1].userData["bodyA"] = {"id": a.id,
+                                                       "position": str(a.body.position).replace("b2Vec2", ""),
                                                        "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
                                                        "rotation": a.body.angle,
                                                        "anchorA": str(self.world.joints[-1].anchorA).replace("b2Vec2",
                                                                                                              "")}
 
-            self.world.joints[-1].userData["bodyB"] = {"position": str(b.body.position).replace("b2Vec2", ""),
+            self.world.joints[-1].userData["bodyB"] = {"id": b.id,
+                                                       "position": str(b.body.position).replace("b2Vec2", ""),
                                                        "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
                                                        "rotation": b.body.angle,
                                                        "anchorB": str(self.world.joints[-1].anchorB).replace("b2Vec2",
@@ -2290,7 +2334,6 @@ class Physics():
             print("Can't be the same object.")
 
     def delete(self, bl):
-
         if not type(bl) is list:
             bl = [bl]
 
@@ -2386,7 +2429,7 @@ class Physics():
 class _Base_Block():
 
     def __init__(self, body, static_shape=False, set_sprite=False, sprite=None, draw_static=True, poly_type=None,
-                 board=None,sensor_created=False):
+                 board=None, sensor_created=False):
         self.body = body
         self.board = board
         self.body.userData = {"ob": self, "joints": [], "impulses": [], "forces": [], "goal": False, "actions": [],
@@ -2750,14 +2793,17 @@ class _Base_Block():
                 msk = rotated[:, :, 3:]
 
                 self.board.board_copy[int(y_start):int(y_end), int(x_start):int(x_end)] = (spr * msk) + (
-                            splice * (1 - msk))
+                        splice * (1 - msk))
 
 
             else:
                 if type(self.colour) is tuple or type(self.colour) is list:
                     colour = self.colour
                 else:
-                    colour = self.board.palette.current_palette[self.colour]
+                    if type(self.colour) == str:
+                        colour = self.board.palette.current_palette[2]
+                    else:
+                        colour = self.board.palette.current_palette[self.colour]
                 for pos in self.translated_position:
                     self.board.board_copy = cv2.fillConvexPoly(self.board.board_copy, pos.astype(int),
                                                                colour)
@@ -2800,9 +2846,9 @@ class _Base_Block():
 class Block(_Base_Block):
 
     def __init__(self, body, static_shape=False, set_sprite=False, sprite=None, draw_static=True, poly_type=None,
-                 board=None,sensor_created=False):
+                 board=None, sensor_created=False):
         super().__init__(body, static_shape=static_shape, set_sprite=set_sprite, sprite=sprite, draw_static=draw_static,
-                         poly_type=poly_type, board=board,sensor_created=sensor_created)
+                         poly_type=poly_type, board=board, sensor_created=sensor_created)
 
 
 class Board():
@@ -3079,8 +3125,10 @@ class Contacter(b2ContactListener):
             return
 
         # if floor touches
-        if sensor.static:
-            block.body.userData["ground_touches"] += 1
+        if contact.fixtureA.body.userData["ob"].type < 0 and contact.fixtureB.body.userData["ob"].type > 0:
+            contact.fixtureB.body.userData["ground_touches"] += 1
+        if contact.fixtureA.body.userData["ob"].type > 0 and contact.fixtureB.body.userData["ob"].type < 0:
+            contact.fixtureA.body.userData["ground_touches"] += 1
 
         block.body.userData["sensor_touch_id"].append(sensor.id)
 
@@ -3203,12 +3251,11 @@ class Contacter(b2ContactListener):
         # check if bullet
         if sensor.sensor["type"] == "bullet" and sensor.sensor["data"] != block.id:
             # destroy bullets on hitting object with a mass > 200 else let it keep moving
-            if block.get_area() > 200:
-                sensor.body.userData["bullet_actions"] = "kill"
 
             # kill blocks if hit by bullet and not static unless the options allow it
             if not block.static or sensor.body.userData["bullets_destory_ground"]:
-                # print("")
+                if block.get_area() > 200:
+                    sensor.body.userData["bullet_actions"] = "kill"
                 block.body.userData["bullet_actions"] = "hit"
 
     def PreSolve(self, contact, impulse):
@@ -3230,9 +3277,10 @@ class Contacter(b2ContactListener):
         block.body.userData["sensor_touch_id"].remove(sensor.id)
 
         # if floor touches
-        if sensor.static:
-            block.body.userData["ground_touches"] -= 1
-
+        if contact.fixtureA.body.userData["ob"].type < 0 and contact.fixtureB.body.userData["ob"].type > 0:
+            contact.fixtureB.body.userData["ground_touches"] -= 1
+        if contact.fixtureA.body.userData["ob"].type > 0 and contact.fixtureB.body.userData["ob"].type < 0:
+            contact.fixtureA.body.userData["ground_touches"] -= 1
         # force
         if sensor.sensor["type"] == "force":
             block.body.userData["forces"] = []
@@ -3240,7 +3288,7 @@ class Contacter(b2ContactListener):
         try:
             # check if gravity
             if sensor.sensor["type"] in ["impulse", "force", "gravity", "motorsw", "enlarger", "shrinker", "splitter",
-                                         "sticky", "water", "center","spawner"]:
+                                         "sticky", "water", "center", "spawner"]:
                 self.remove_action(sensor, block)
 
             # check if water leave
