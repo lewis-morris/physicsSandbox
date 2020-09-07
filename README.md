@@ -27,11 +27,11 @@ Give them a go, and find out for your self.
 
 ## I dont know what I'm doing, help!!
 
-Thers got tonnes of tutorials I've made, all video based.
+Having an understanding of 2D game physics and box2D would help but there are tonnes of tutorials below, all video based.
 
-Apologies if I'm not so clear - theres a lot to cover and the best way to learn is to just try it for your self.
+Apologies if I'm not so clear and concise in the videos - theres a lot to cover and the best way to learn is to just try it for your self.
 
-I suggest at minimum watching the first 3 tutorials, but you could get by with just the first one.
+I suggest at minimum watching the first 3 tutorials, but you could get by and have fun with just the first one.
 
 [1 - Basic Usage (block creation)](https://youtu.be/CH1u0otXFXI)
 
