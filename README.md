@@ -57,7 +57,7 @@ Just open a console or command prompt and navigate to a folder that you wish to 
 Then type 
 
 ```
-git clone 'https://github.com/lewis-morris/physicsSandbox'
+git clone https://github.com/lewis-morris/physicsSandbox
 cd physicsSandbox
 pip install -r requirements.txt
 python run.py
