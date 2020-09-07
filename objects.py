@@ -813,9 +813,9 @@ class Physics():
                     joints_dic["bodyB"] = joint.joint.bodyB.userData["ob"].id if not clone or block.id != \
                                                                                  joint.joint.bodyB.userData[
                                                                                      "ob"].id else clone_id
-                elif attr is "groundAnchorA" and hasattr(joint.joint, "groundAnchorA"):
+                elif attr == "groundAnchorA" and hasattr(joint.joint, "groundAnchorA"):
                     joints_dic["groundAnchorA"] = [joint.joint.groundAnchorA.x, joint.joint.groundAnchorA.y]
-                elif attr is "groundAnchorB" and hasattr(joint.joint, "groundAnchorB"):
+                elif attr == "groundAnchorB" and hasattr(joint.joint, "groundAnchorB"):
                     joints_dic["groundAnchorB"] = [joint.joint.groundAnchorB.x, joint.joint.groundAnchorB.y]
                 else:
                     ok = False
@@ -1640,45 +1640,47 @@ class Physics():
                                 sensor = sensor[0]
                                 bl_poly = bl.get_poly(4)
                                 sensor_poly = sensor.get_poly(4)
-                                intersection = sensor_poly.intersection(bl_poly)
-                                if type(intersection) is MultiPolygon:
-                                    intersection = intersection.convex_hull
+                                for pos,fix in zip(bl.translated_position,bl.body.fixtures):
+                                    bl_poly = Polygon(pos)
+                                    intersection = sensor_poly.intersection(bl_poly)
+                                    if type(intersection) is MultiPolygon:
+                                        intersection = intersection.convex_hull
 
-                                int_area = convert_to_mks(intersection.area) / 42.5
-                                if int_area > 0:
-                                    int_centroid = convert_to_mks(intersection.centroid.x, intersection.centroid.y)
-                                    water_density = bl.body.fixtures[0].density
-                                    displaced_mass = water_density * int_area
-                                    buoyancy_force = displaced_mass * -np.array(self.gravity)
+                                    int_area = convert_to_mks(intersection.area) / 42.5
+                                    if int_area > 0:
+                                        int_centroid = convert_to_mks(intersection.centroid.x, intersection.centroid.y)
+                                        water_density = fix.density
+                                        displaced_mass = water_density * int_area
+                                        buoyancy_force = displaced_mass * -np.array(self.gravity)
 
-                                    bl.body.ApplyForce(buoyancy_force, int_centroid, wake=True)
-                                    coords = list(intersection.exterior.coords)
+                                        bl.body.ApplyForce(buoyancy_force, int_centroid, wake=True)
+                                        coords = list(intersection.exterior.coords)
 
-                                    for i in range(len(coords) - 1):
-                                        v0 = b2Vec2(convert_to_mks(coords[i][0], coords[i][1]))
-                                        v1 = b2Vec2(convert_to_mks(coords[i + 1][0], coords[i + 1][1]))
-                                        mid = 0.5 * (v0 + v1)
-                                        velDir = b2Vec2(bl.body.GetLinearVelocityFromWorldPoint(
-                                            mid) - sensor.body.GetLinearVelocityFromWorldPoint(mid))
-                                        vel = velDir.Normalize()
-                                        edge = b2Vec2(v1 - v0)
-                                        edgeLength = b2Vec2(edge).Normalize()
-                                        normal = b2Vec2(b2Cross(-1, edge))
-                                        dragDot = b2Dot(normal, velDir)
-                                        if dragDot > 0:
-                                            dragMag = dragDot * edgeLength * water_density * vel * vel
-                                            dragForce = dragMag * -velDir
-                                            bl.body.ApplyForce(dragForce, mid, wake=True)
+                                        for i in range(len(coords) - 1):
+                                            v0 = b2Vec2(convert_to_mks(coords[i][0], coords[i][1]))
+                                            v1 = b2Vec2(convert_to_mks(coords[i + 1][0], coords[i + 1][1]))
+                                            mid = 0.5 * (v0 + v1)
+                                            velDir = b2Vec2(bl.body.GetLinearVelocityFromWorldPoint(
+                                                mid) - sensor.body.GetLinearVelocityFromWorldPoint(mid))
+                                            vel = velDir.Normalize()
+                                            edge = b2Vec2(v1 - v0)
+                                            edgeLength = b2Vec2(edge).Normalize()
+                                            normal = b2Vec2(b2Cross(-1, edge))
+                                            dragDot = b2Dot(normal, velDir)
+                                            if dragDot > 0:
+                                                dragMag = dragDot * edgeLength * water_density * vel * vel
+                                                dragForce = dragMag * -velDir
+                                                bl.body.ApplyForce(dragForce, mid, wake=True)
 
-                                            # lift for moving objects
-                                            liftDot = b2Dot(edge, velDir);
-                                            liftMag = (dragDot * liftDot) * edgeLength * water_density * vel * vel
-                                            liftDir = b2Vec2(b2Cross(1, velDir))
-                                            liftForce = b2Vec2(liftMag * liftDir)
-                                            bl.body.ApplyForce(liftForce, mid, wake=True);
+                                                # lift for moving objects
+                                                liftDot = b2Dot(edge, velDir);
+                                                liftMag = (dragDot * liftDot) * edgeLength * water_density * vel * vel
+                                                liftDir = b2Vec2(b2Cross(1, velDir))
+                                                liftForce = b2Vec2(liftMag * liftDir)
+                                                bl.body.ApplyForce(liftForce, mid, wake=True);
 
-                                    angularDrag = int_area * -bl.body.angularVelocity
-                                    bl.body.ApplyTorque(angularDrag, wake=True)
+                                        angularDrag = int_area * -bl.body.angularVelocity
+                                        bl.body.ApplyTorque(angularDrag, wake=True)
                             else:
                                 pass
                         # action for switching gravity to low (almost water like)
@@ -3064,19 +3066,19 @@ class Contacter(b2ContactListener):
 
         idd = id(contact.fixtureA.body)
 
-        if id(contact.fixtureA.body) in [id(bod) for bod in self.world.bodies]:
+        #if id(contact.fixtureA.body) in [id(bod) for bod in self.world.bodies]:
 
-            if "ob" in contact.fixtureA.body.userData.keys():
+        if "ob" in contact.fixtureA.body.userData.keys():
 
-                blockA = contact.fixtureA.body.userData["ob"]
-            else:
-                return None, None
+            blockA = contact.fixtureA.body.userData["ob"]
+        else:
+            return None, None
 
-        if id(contact.fixtureB.body) in [id(bod) for bod in self.world.bodies]:
-            if "ob" in contact.fixtureB.body.userData.keys():
-                blockB = contact.fixtureB.body.userData["ob"]
-            else:
-                return None, None
+        #if id(contact.fixtureB.body) in [id(bod) for bod in self.world.bodies]:
+        if "ob" in contact.fixtureB.body.userData.keys():
+            blockB = contact.fixtureB.body.userData["ob"]
+        else:
+            return None, None
 
         sensor = None
         block = None
@@ -3113,7 +3115,8 @@ class Contacter(b2ContactListener):
                 return None, None
             else:
                 return sensor, block
-
+        else:
+            return None, None
     def BeginContact(self, contact):
 
         ## log sensor and block

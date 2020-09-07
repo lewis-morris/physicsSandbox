@@ -386,7 +386,7 @@ def deal_with_toolbar_event(toolbar, cur_key, cur_key_type, draw, msg):
         else:
             toolbar[ty].update(disabled=False)
 
-    if not event is "":
+    if event != "":
         if event == "expand":
             toolbar["options"].Update(visible=not toolbar["options"].Visible)
             toolbar["options"].Visible = not toolbar["options"].Visible
