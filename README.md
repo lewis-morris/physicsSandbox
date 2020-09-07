@@ -3,33 +3,35 @@
 ## What am I?
 
 Physics sandbox is what it says on the tin. Its a 2D physics sandbox game creator based solely on pybox2d (box2D) and 
-opencv with a dash of numpy and pysimplegui (theres no pygame, its all written from scratch).
+opencv with a dash of numpy and pysimplegui (theres no pygame, all the rendering is written from scratch).
 
 You can create any realistic simulations and game scenarios of your choosing. Think of it as a of
 Gary's Mod. But not as good and only in 2D.
 
 ## Why?
 
-This is just a project for me to improve my python skills, there are bugs. But it works pretty well for fun, i've never
-studied game development and don't really know what I'm doing. Its all come from stumbling across pybox2d.
+Its all come from stumbling across pybox2d. And is just a project to see what I am capable of.
+ 
+There are bugs. But it works pretty well, I've never studied game development and don't really know what I'm doing 
+in that respect. 
 
-It MAY crash on you & its only tested fully in Linux (although all libraries used are cross platform)
+Its only tested fully in Linux (although all libraries used are cross platform)
 
 ## What can I do?
 
 I've managed to unfaithfully create a whole host of games which you can load. 
 
-Give them a go, and find out for your self. (If you have an engineering degree I think you might make something better
-than me!!)
+Give them a go, and find out for your self. 
+
+(If you have an engineering degree I think you might make something more creative than me)
 
 ## I dont know what I'm doing, help!!
 
-I've got tonnes of tutorials I've made, all video based.
+Thers got tonnes of tutorials I've made, all video based.
 
 Apologies if I'm not so clear - theres a lot to cover and the best way to learn is to just try it for your self.
 
 I suggest at minimum watching the first 3 tutorials, but you could get by with just the first one.
-
 
 [1 - Basic Usage (block creation)](https://youtu.be/CH1u0otXFXI)
 
@@ -50,7 +52,9 @@ I suggest at minimum watching the first 3 tutorials, but you could get by with j
 
 If you've got git installed its easy.
 
-just open a console or command prompt and navigate to a folder you wish to install it in.
+Just open a console or command prompt and navigate to a folder that you wish to install it in.
+
+Then type 
 
 ```
 git clone 'https://github.com/lewis-morris/physicsSandbox'

@@ -1007,6 +1007,7 @@ def update_block(block):
                     sg.Radio('Background', "RADIO1", default=True if drawLayer == 2 else False, key="background")],
                    [sg.Text("Draw order"), sg.InputText(block.draw_position, key="draw_position")],
                    [sg.Text("Choose Sprite"), sg.FileBrowse(key="sprite")],
+                   [sg.Checkbox(text="Sprite On?", key="sprite_on", default=block.sprite_on)],
                    [sg.Text("Translation Speed"),
                     sg.InputText(block.translation_speed, key="translation_speed")],
                    ]

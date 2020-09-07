@@ -814,11 +814,9 @@ class Physics():
                                                                                  joint.joint.bodyB.userData[
                                                                                      "ob"].id else clone_id
                 elif attr is "groundAnchorA" and hasattr(joint.joint, "groundAnchorA"):
-                    joints_dic["groundAnchorA"] = joint.joint.groundAnchorA.userData[
-                        "ob"].id if not clone or block.id == joint.joint.groundAnchorA.userData["ob"].id else clone_id
+                    joints_dic["groundAnchorA"] = [joint.joint.groundAnchorA.x, joint.joint.groundAnchorA.y]
                 elif attr is "groundAnchorB" and hasattr(joint.joint, "groundAnchorB"):
-                    joints_dic["groundAnchorB"] = joint.joint.groundAnchorB.userData[
-                        "ob"].id if not clone or block.id == joint.joint.groundAnchorB.userData["ob"].id else clone_id
+                    joints_dic["groundAnchorB"] = [joint.joint.groundAnchorB.x, joint.joint.groundAnchorB.y]
                 else:
                     ok = False
                     if "get" + attr.lower() in lower_attributes:
@@ -1097,7 +1095,8 @@ class Physics():
                         self.create_prismatic(a, b, vector=jv["axis"], anchor=new_ancA, distance=jv["upperLimit"],
                                               convert=convert_joints)
                     elif jv["type"] == b2PulleyJoint:
-                        self.create_pulley(a, b, jv["lines"])
+                        lines = [jv["anchorA"],jv["groundAnchorA"],jv["anchorB"],jv["groundAnchorB"]]
+                        self.create_pulley(a, b, lines,convert=False)
                     else:
                         print("help")
 
@@ -2011,8 +2010,9 @@ class Physics():
             a.body.active = True
             a.body.awake = True
 
-    def create_pulley(self, a, b, lines):
-        lines = [convert_to_mks(x[0], x[1]) for x in lines]
+    def create_pulley(self, a, b, lines,convert=True):
+        if convert:
+            lines = [convert_to_mks(x[0], x[1]) for x in lines]
         self.world.CreatePulleyJoint(bodyA=a.body,
                                      bodyB=b.body,
                                      groundAnchorA=lines[1],
@@ -2074,6 +2074,7 @@ class Physics():
                     first_block = self.block_list[-1]
                 self.block_list[-1].body.angle = angle
 
+
             if i == 0:
                 if a is None:
                     do_joint = False
@@ -2097,6 +2098,9 @@ class Physics():
             else:
                 blockB = self.block_list[-1].body
 
+            if first_block is None:
+                do_joint = False
+
             if do_joint:
                 self.world.CreateRevoluteJoint(bodyA=blockA,
                                                bodyB=blockB,
@@ -2106,19 +2110,20 @@ class Physics():
                     "id": ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(15)),
                     "draw": True}
 
-                self.world.joints[-1].userData["bodyA"] = {"id": a.id,
-                                                           "position": str(a.body.position).replace("b2Vec2", ""),
-                                                           "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
-                                                           "rotation": a.body.angle,
-                                                           "anchorA": str(self.world.joints[-1].anchorA).replace(
-                                                               "b2Vec2", "")}
-
-                self.world.joints[-1].userData["bodyB"] = {"id": b.id,
-                                                           "position": str(b.body.position).replace("b2Vec2", ""),
-                                                           "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
-                                                           "rotation": b.body.angle,
-                                                           "anchorB": str(self.world.joints[-1].anchorB).replace(
-                                                               "b2Vec2", "")}
+                if not a is None:
+                    self.world.joints[-1].userData["bodyA"] = {"id": a.id,
+                                                               "position": str(a.body.position).replace("b2Vec2", ""),
+                                                               "worldCenter": str(a.body.worldCenter).replace("b2Vec2", ""),
+                                                               "rotation": a.body.angle,
+                                                               "anchorA": str(self.world.joints[-1].anchorA).replace(
+                                                                   "b2Vec2", "")}
+                if not b is None:
+                    self.world.joints[-1].userData["bodyB"] = {"id": b.id,
+                                                               "position": str(b.body.position).replace("b2Vec2", ""),
+                                                               "worldCenter": str(b.body.worldCenter).replace("b2Vec2", ""),
+                                                               "rotation": b.body.angle,
+                                                               "anchorB": str(self.world.joints[-1].anchorB).replace(
+                                                                   "b2Vec2", "")}
 
                 blockB.active = True
                 blockB.awake = True
@@ -2946,7 +2951,7 @@ class Board():
                             conts = constrained_delaunay_triangles([tuple(x) for x in approx.squeeze()])
 
                             for cn in conts:
-                                phys.create_block(cn, (0, 0), draw_static=draw)
+                                phys.create_block(cn, (0, 0), draw_static=draw,poly_type=-1)
                                 final_contours.append(cn)
         else:
             self.board = np.zeros((height, width, 3), dtype=np.uint8)
