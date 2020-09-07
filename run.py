@@ -471,7 +471,7 @@ if __name__ == "__main__":
         # draw joints
         phys.draw_joints()
 
-        # write lines for drawing
+        # write lines for drawwing
         draw.draw_point()
 
         # write message if needed
@@ -493,6 +493,7 @@ if __name__ == "__main__":
             if loops > phys.options["blocks"]["spawn_every"]:
                 phys.create_block()
                 loops = 0
+
             # check players off screen to kill (otherwise they would continue to be calculated off screen wasting CPU) or if they have reached the goal
             goal_hits = phys.check_off()
             msg.goal_hits += goal_hits
