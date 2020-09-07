@@ -1,4 +1,4 @@
-![Logo](logo1.png)
+![Logo](logo.png)
 
 ## What am I?
 
