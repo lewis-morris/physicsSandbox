@@ -16,7 +16,7 @@ Its all come from stumbling across pybox2d. And is just a project to see what I 
 There are bugs. But it works pretty well, I've never studied game development and don't really know what I'm doing 
 in that respect. 
 
-Its only tested fully in Linux (although all libraries used are cross platform)
+Its only tested fully in Linux (although all libraries used are cross platform, its not been tested on a mac)
 
 ## What can I do?
 
