@@ -1,9 +1,7 @@
-![Logo](logo.png)
-
-## What am I?
 
 ![Example](https://media.giphy.com/media/LpiwUDHla4GZ1cpqjo/giphy.gif)
 
+## What am I?
 
 Physics sandbox is what it says on the tin. Its a 2D physics sandbox game creator based solely on pybox2d (box2D) and 
 opencv with a dash of numpy and pysimplegui (theres no pygame, all the rendering is written from scratch).
@@ -81,3 +79,6 @@ Submit a pull request and maybe I'll add it to the repo.
 ## Contact me
 
 If any one wants to contact me directly its lewis.morris@gmail.com
+
+
+![Logo](logo.png)
