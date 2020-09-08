@@ -7,3 +7,5 @@ sect>=0.3.7
 shapely>=1.7.0
 scikit-image>=0.16.2
 dill>=0.3.2
+sneakysnek>=0.1.1
+pygetwindow>=0.0.8
