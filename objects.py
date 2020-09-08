@@ -502,7 +502,7 @@ class Physics():
         for bl in [bl for bl in self.block_list if bl.keys != {}]:
             for k, keys_vals in bl.keys.items():
                 for action in keys_vals:
-                    if k != None and ord(k) == key:
+                    if k != None and k == key:
                         # if cancel rotation
                         if "cancel_rotation" in action.keys():
                             if action["cancel_rotation"]:
@@ -513,7 +513,7 @@ class Physics():
                                 bl.body.linearVelocity = (0, 0)
 
                         # if the toggle is activated the switch the toggle on keypress
-                        if action["toggle_allowed"] == True and ord(k) == key:
+                        if action["toggle_allowed"] == True and k == key:
                             action["toggle_status"] = not action["toggle_status"]
 
                         # if the enforce touchs and player is touching the ground or inforce touches are off then fire the action on key press
@@ -940,10 +940,10 @@ class Physics():
 
             # reseize sprite
 
-            if not block.sprite is None:
+            if resize:
                 block.set_min_mix(True)
                 block.set_height_width()
-                if resize:
+                if not block.sprite is None:
                     block.sprite = cv2.resize(block.sprite, dsize=(int(block.width), int(block.height)),
                                               interpolation=cv2.INTER_CUBIC)
             # not needed any more!!
@@ -1610,6 +1610,8 @@ class Physics():
 
                                 bl.center_me = True
                                 bl.death_actions["return_translation"] = act["translation"]
+                                if act["convert_to_player"]:
+                                    bl.is_player = True
                                 if not act["allow_multiple_fires"]:
                                     act["complete"] = True
 
@@ -3003,7 +3005,7 @@ class Messenger:
     def auto_set(self, options, key, force):
         messages = [k for k, v in options.items()]
         types = [v for k, v in options.items()]
-        keys = [chr(key) + ty.value for ty in types]
+        keys = [key + ty.value for ty in types]
 
         if force:
             self.old_message = self.message
@@ -3253,6 +3255,7 @@ class Contacter(b2ContactListener):
                 block.body.userData["actions"].append(
                     {"type": sensor.sensor["type"], "id": sensor.id, "complete": False,
                      "allow_multiple_fires": sensor.sensor["options"]["allow_multiple_fires"],
+                     "convert_to_player": sensor.sensor["options"]["convert_to_player"],
                      "translation": sensor.sensor["options"]["translation"],
                      "fire_action_once_contained": sensor.sensor["options"]["fire_action_once_contained"]})
 

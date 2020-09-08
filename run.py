@@ -1,9 +1,24 @@
 #!/usr/bin/env python
 # coding: utf-8
+import copy
 
 from gui import update_block, get_fixtures, get_toolbar, deal_with_toolbar_event, get_clicked_keys_gui
 from keyboardmouse import *
+from sneakysnek.keyboard_event import KeyboardEvent
+from sneakysnek.recorder import Recorder
 
+cur_key = None
+key = None
+key_change_ok = True
+
+def get_key(event):
+    global key
+    global key_change_ok
+    if event.event.value == "UP":
+        key = ""
+    elif type(event) == KeyboardEvent and key_change_ok:
+        key = event.keyboard_key.value.lower().replace("key_","")
+        key_change_ok = False
 
 def add(event, x, y, flags, param):
     global draw
@@ -417,6 +432,9 @@ if __name__ == "__main__":
     # init the physics engine, board, and timer.
     timer, phys, draw, board, msg = load_gui(persistant=True)
 
+    #record key presses
+    recorder = Recorder.record(get_key)
+
     # load config
     config = phys.config
 
@@ -440,24 +458,30 @@ if __name__ == "__main__":
     if not hasattr(board, "run"):
         setattr(board, "run", True)
 
+    snaps = 0
     while board.run:
 
         # read toolbar
-        toolbar, key, name, cur_key_type, draw, msg, force = deal_with_toolbar_event(toolbar, cur_key, cur_key_type,
-                                                                                     draw, msg)
+        toolbar, click_key, name, cur_key_type, draw, msg, force = deal_with_toolbar_event(toolbar, cur_key, cur_key_type,draw, msg)
+        if not click_key is None:
+            key = click_key
 
         # move to snap to board
-        if loops % 10 == 0:
-            toolbar.move(cv2.getWindowImageRect("Board")[0] + board.board.shape[1],
-                         cv2.getWindowImageRect("Board")[1] - 53)
+        #if loops % 10 == 0:
+        if snaps == 0:
+            toolbar.move(cv2.getWindowImageRect("Board")[0] + board.board.shape[1],cv2.getWindowImageRect("Board")[1] - 53)
+            snaps +=1
 
         # get key press
-        if key is None:
-            key = cv2.waitKey(1) & 0xFF
+        # if _ is None:
+        _ = cv2.waitKey(1) & 0xFF
 
         # deal with keypress OR spawn per config file
+
         cur_key_type, cur_key, draw, phys, msg, timer, board = action_key_press(key, cur_key_type, cur_key, draw, phys,
                                                                                 msg, timer, board, force)
+        key = ""
+        key_change_ok = True
 
         # load a blank background board
         board.copy_board()

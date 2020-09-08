@@ -426,7 +426,7 @@ def deal_with_toolbar_event(toolbar, cur_key, cur_key_type, draw, msg):
         elif cur_key_type == 1:
             toolbar["move_tab"].select()
 
-    return toolbar, ord(key) if not key is None else None, event, cur_key_type, draw, msg, force
+    return toolbar, key if not key is None else None, event, cur_key_type, draw, msg, force
 
 
 def get_files():

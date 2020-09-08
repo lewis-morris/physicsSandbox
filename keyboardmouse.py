@@ -31,7 +31,7 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
     """
 
     # delete any old mouse joints prior to dealing with the next keypress
-    if key != ord("m") and msg.message != "Mouse Move" and cur_key_type == 0:
+    if key != "m" and msg.message != "Mouse Move" and cur_key_type == 0:
         for jn in phys.world.joints:
             if type(jn) is b2MouseJoint:
                 phys.world.DestroyJoint(jn)
@@ -39,7 +39,7 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
     if key == 255:
         pass
 
-    elif key == ord("r") and cur_key_type == 0:
+    elif key == "r" and cur_key_type == 0:
         # RESET SCREEN
         if sg.popup_yes_no("Are you sure you want to reset?") == "Yes":
             draw.reset()
@@ -47,7 +47,7 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
             msg.set_message("Reset")
             board.reset = True
 
-    elif key == ord("q") and cur_key_type == 0:
+    elif key == "q" and cur_key_type == 0:
         # QUIT
         msg.set_message("Quit")
         val = sg.popup_yes_no("Are you sure you want to quit?")
@@ -55,40 +55,40 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
             board.run = False
 
 
-    elif key == ord("z") and cur_key_type == 0:
+    elif key == "z" and cur_key_type == 0:
         # SPAWN
         msg.set_message("Spawn")
         phys.create_block()
 
-    elif key == ord("u") and cur_key_type == 0:
+    elif key == "u" and cur_key_type == 0:
         # draw delete blocks
         draw.reset()
         options = {"Remove Joints": SelectType.select}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("x") and cur_key_type == 0:
+    elif key == "x" and cur_key_type == 0:
         # draw delete blocks
         draw.reset()
         options = {"Delete": SelectType.select}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("p") and cur_key_type == 0:
+    elif key == "p" and cur_key_type == 0:
         # draw polygon
         draw.reset()
         # msg.set = {"Dynamic Block": draw.get_draw_type()}
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Dynamic Block")
 
-    elif key == ord("g") and cur_key_type == 0:
+    elif key == "g" and cur_key_type == 0:
         # draw ground
         draw.reset()
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Static Block")
         # options = {"Static Block": draw.get_draw_type()}
 
         # cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("i") and cur_key_type == 0:
+    elif key == "i" and cur_key_type == 0:
         # draw terrain
 
         draw.reset()
@@ -98,7 +98,7 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
         draw, phys, board = create_terrain(draw, phys, board=board)
 
 
-    elif key == ord("f") and cur_key_type == 0:
+    elif key == "f" and cur_key_type == 0:
         # draw fragments or select
         draw.reset()
         options = {
@@ -107,46 +107,46 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
         cur_key = msg.auto_set(options, key, force)
 
 
-    elif key == ord("1") and cur_key_type == 0:
+    elif key == "1" and cur_key_type == 0:
         # fire polygon
         draw.reset()
         options = {"Create": SelectType.select_point, "Fire Block": SelectType.vector_direction}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("4") and cur_key_type == 0:
+    elif key == "4" and cur_key_type == 0:
         # select
         # draw ground
         draw.reset()
         options = {"Joint Update": SelectType.select}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord(";") and cur_key_type == 0:
+    elif key == ";" and cur_key_type == 0:
         # select
         # draw ground
         draw.reset()
         options = {"Player Update": SelectType.select}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("2") and cur_key_type == 0:
+    elif key == "2" and cur_key_type == 0:
         # Mouse Move
         draw.reset()
         options = {"Rotate": SelectType.player_select}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("m") and cur_key_type == 0:
+    elif key == "m" and cur_key_type == 0:
         # Mouse Move
         draw.reset()
         options = {"Mouse Move": SelectType.select, "Normal Move": SelectType.null, "Joint Move": SelectType.null,
                    "Clone Move": SelectType.null}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("t") and cur_key_type == 0:
+    elif key == "t" and cur_key_type == 0:
         # Mouse Move
         draw.reset()
         options = {"Transform": SelectType.player_select}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("e") and cur_key_type == 0:
+    elif key == "e" and cur_key_type == 0:
         # draw ropes
         if sg.popup_yes_no("Are you sure you want to kill all blocks?") == "Yes":
             draw.reset()
@@ -154,13 +154,13 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
             msg.set_message("Remove Blocks")
             cur_key = "e"
 
-    elif key == ord("v") and cur_key_type == 0:
+    elif key == "v" and cur_key_type == 0:
         # draw ropes
         draw.reset()
         msg.set_message("Set Spawn")
         cur_key = "v"
 
-    elif key == ord("h") and cur_key_type == 0:
+    elif key == "h" and cur_key_type == 0:
         # draw fragment ALL players
         # cur_key = "h"
         msg.set_message("Frag All")
@@ -168,94 +168,94 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
         blocks = [bl for bl in phys.block_list if not bl.static is True and not bl.is_terrain is True]
         phys.fractal_block(blocks, create=False, board=board)
 
-    elif key == ord("k") and cur_key_type == 0:
+    elif key == "k" and cur_key_type == 0:
         # draw splitter sensor
         draw.reset()
 
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Force")
 
 
-    elif key == ord("l") and cur_key_type == 0:
+    elif key == "l" and cur_key_type == 0:
         # draw splitter sensor
         draw.reset()
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Splitter")
 
 
-    elif key == ord("/") and cur_key_type == 0:
+    elif key == "/" and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Impulse")
 
 
-    elif key == ord("'") and cur_key_type == 0:
+    elif key == "'" and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Goal")
 
-    elif key == ord("{") and cur_key_type == 0:
+    elif key == "{" and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Spawner")
 
 
-    elif key == ord("~") and cur_key_type == 0:
+    elif key == "~" and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Motor Switch")
 
-    elif key == ord("&") and cur_key_type == 0:
+    elif key == "&" and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Water")
 
 
-    elif key == ord("^") and cur_key_type == 0:
+    elif key == "^" and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Low Gravity")
 
 
-    elif key == ord("#") and cur_key_type == 0:
+    elif key == "#" and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Gravity Switch")
 
-    elif key == ord(")") and cur_key_type == 0:
+    elif key == ")" and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Center")
 
-    elif key == ord("%") and cur_key_type == 0:
+    elif key == "%" and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Sticky")
 
-    elif key == ord("£") and cur_key_type == 0:
+    elif key == "£" and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Enlarger")
 
 
-    elif key == ord("$") and cur_key_type == 0:
+    elif key == "$" and cur_key_type == 0:
         # draw booster sensor
         draw.reset()
-        cur_key = chr(key) + str(draw.get_draw_type().value)
+        cur_key = key + str(draw.get_draw_type().value)
         msg.set_message("Shrinker")
 
 
-    elif key == ord("0") and cur_key_type == 0:
+    elif key == "0" and cur_key_type == 0:
         # pause physics
         phys.force_draw_all = not phys.force_draw_all
         options = {"Draw All": SelectType.null, "Draw Set": SelectType.null}
@@ -263,14 +263,14 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
 
 
 
-    elif key == ord("o") and cur_key_type == 0:
+    elif key == "o" and cur_key_type == 0:
         # pause physics
         draw.reset()
         phys.pause = not phys.pause
         msg.set_message("Pause" + (" On" if phys.pause is True else " Off"))
         cur_key = "o"
 
-    elif key == ord("*") and cur_key_type == 0:
+    elif key == "*" and cur_key_type == 0:
         # PICKLE BOARD
         name, blurb = save_gui()
         if not name is None:
@@ -279,23 +279,23 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
             cur_key = "*"
             draw.reset()
 
-    elif key == ord("-"):
+    elif key == "-":
         # LOAD BOARD
 
         timer, phys, draw, board, msg = load_gui(timer, phys, draw, board, msg, persistant=False)
         config = phys.config
 
-    elif key == ord("5") and cur_key_type == 0:
+    elif key == "5" and cur_key_type == 0:
 
         load_options()
         phys.change_config(board=board)
 
-    elif key == ord("6") and cur_key_type == 0:
+    elif key == "6" and cur_key_type == 0:
 
         board, phys, msg = update_background(board, phys, msg)
 
 
-    elif key == ord("j") and cur_key_type == 0:
+    elif key == "j" and cur_key_type == 0:
         # draw joints
         draw.reset()
         options = {"Merge Blocks": SelectType.select,
@@ -310,7 +310,7 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
 
 
 
-    elif key == 9:
+    elif key == "tab":
         # Tab key press, this switches to move mode
         if cur_key_type == 0:
             cur_key_type = 1
@@ -324,96 +324,96 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
 
     # Drawing mode buttons
 
-    elif key == ord("`") and cur_key_type == 1:
+    elif key == "`" and cur_key_type == 1:
         # Mouse Move
         draw.reset()
         options = {"Change Keys": SelectType.select}
         cur_key = msg.auto_set(options, key, force)
 
 
-    elif key == ord("1") and cur_key_type == 1:
+    elif key == "1" and cur_key_type == 1:
         # Mouse Move
         draw.reset()
         options = {"Screen Move": SelectType.null}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("2") and cur_key_type == 1:
+    elif key == "2" and cur_key_type == 1:
         # Mouse Move
         draw.reset()
         options = {"Center Clicked": SelectType.null}
         cur_key = msg.auto_set(options, key, force)
 
 
-    elif key == ord("]") and cur_key_type == 1:
+    elif key == "]" and cur_key_type == 1:
         # draw polygon
         draw.reset()
         options = {"Fire Bullet": SelectType.bullet_direction}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("[") and cur_key_type == 1:
+    elif key == "[" and cur_key_type == 1:
         # draw polygon
         draw.reset()
         options = {"Choose Player": SelectType.null}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("3") and cur_key_type == 1:
+    elif key == "3" and cur_key_type == 1:
         # draw polygon
 
         draw.reset()
         options = {"Motor Forwards": SelectType.vector_direction}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("4") and cur_key_type == 1:
+    elif key == "4" and cur_key_type == 1:
         # draw polygon
 
         draw.reset()
         options = {"Motor Backwards": SelectType.vector_direction}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("9") and cur_key_type == 1:
+    elif key == "9" and cur_key_type == 1:
         # draw polygon
 
         draw.reset()
-        cur_key = chr(key) + str(SelectType.vector_direction.value)
+        cur_key = key + str(SelectType.vector_direction.value)
         msg.set_message("Force")
 
-    elif key == ord("0") and cur_key_type == 1:
+    elif key == "0" and cur_key_type == 1:
         # draw polygon
 
         draw.reset()
         options = {"Relative Force": SelectType.vector_direction}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("5") and cur_key_type == 1:
+    elif key == "5" and cur_key_type == 1:
         # draw polygon
 
         draw.reset()
         options = {"Rotate CCW": SelectType.vector_direction}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("6") and cur_key_type == 1:
+    elif key == "6" and cur_key_type == 1:
         # draw polygon
 
         draw.reset()
         options = {"Rotate CW": SelectType.vector_direction}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("7") and cur_key_type == 1:
+    elif key == "7" and cur_key_type == 1:
         # draw polygon
 
         draw.reset()
-        cur_key = chr(key) + str(SelectType.vector_direction.value)
+        cur_key = key + str(SelectType.vector_direction.value)
         msg.set_message("Impulse")
 
 
-    elif key == ord("8") and cur_key_type == 1:
+    elif key == "8" and cur_key_type == 1:
         # draw polygon
 
         draw.reset()
         options = {"Relative Impulse": SelectType.vector_direction}
         cur_key = msg.auto_set(options, key, force)
 
-    elif key == ord("!") and cur_key_type == 1:
+    elif key == "!" and cur_key_type == 1:
         """
         Used to attach an relative impulse to a block
         """
@@ -592,7 +592,7 @@ def draw_sensor(draw, phys, event, x, y, type, ty):
 
         if ty == "center":
             block.sensor["options"] = {"translation": str(phys.board.translation), "allow_multiple_fires": False,
-                                       "fire_action_once_contained": True}
+                                       "fire_action_once_contained": True, "convert_to_player":True}
 
         if ty == "goal":
             block.sensor["options"] = {"reset_on_player_hit": True, "fire_action_once_contained": True}
