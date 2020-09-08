@@ -1745,7 +1745,8 @@ class Physics():
 
                                 bl.base_poly = bl.set_base_poly()
                                 bl.base_poly_coords = np.array([np.array(pl.exterior.coords) for pl in bl.base_poly])
-
+                                bl.set_height_width()
+                                bl.set_sprite(reset=True)
                                 bl.get_current_pos(force=True)
 
                         # sensor for switching motor
