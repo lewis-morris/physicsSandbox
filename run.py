@@ -46,9 +46,10 @@ def add(event, x, y, flags, param):
     # check if no key
     if (cur_key is None or cur_key == "") and (not draw.move_screen or not event == cv2.EVENT_MBUTTONDOWN):
         return
-
+    elif (draw.move_screen or event == cv2.EVENT_MBUTTONDOWN):
+        pass
     # check all other keys
-    if cur_key[0] == "1" and cur_key_type == 0:
+    elif cur_key[0] == "1" and cur_key_type == 0:
         """
         Used to create fire blocks or create them.
         """

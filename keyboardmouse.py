@@ -1649,7 +1649,7 @@ def get_players_with_mouse(draw, return_joint=False):
                     return pl, jn.joint
                 else:
                     return pl, None
-
+    return None,None
 
 def clone_players(draw, phys):
     # get items
@@ -1841,9 +1841,10 @@ def mouse_joint_move(draw, phys, x=None, y=None, event=None, cur_key=None):
         # change location to move to
         # phys.world.joints
         block, joint = get_players_with_mouse(draw, True)
-        joint.target = convert_to_mks(x, y)
-        block.body.active = True
-        block.body.awake = True
+        if not block is None:
+            joint.target = convert_to_mks(x, y)
+            block.body.active = True
+            block.body.awake = True
 
 
     elif event == cv2.EVENT_LBUTTONUP and draw.status == "move":

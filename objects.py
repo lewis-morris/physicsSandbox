@@ -2534,7 +2534,10 @@ class _Base_Block():
     def does_contain(self, other_block):
         multi = MultiPolygon([Polygon(pos) for pos in self.current_position])
         multi_other = MultiPolygon([Polygon(pos) for pos in other_block.current_position])
-        return multi.contains(multi_other)
+        try:
+            return multi.buffer(0).contains(multi_other.buffer(0))
+        except:
+            print("MultiPolygon Intersection Error")
 
     def get_area(self):
         multi = MultiPolygon([Polygon(pos) for pos in self.current_position])
