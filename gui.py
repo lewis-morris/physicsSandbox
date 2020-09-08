@@ -1291,3 +1291,6 @@ def terrain_complexity_gui():
                 window.close()
                 return int(values["slope_times_min"]), int(values["slope_times_max"]), int(values["x_stride_min"]), int(
                     values["x_stride_max"]), int(values["y_stride_min"]), int(values["y_stride_max"])
+        if event == sg.WIN_CLOSED:
+            window.close()
+            return
