@@ -132,7 +132,6 @@ def get_toolbar():
                            "Create an electric appearing joint between two blocks (j toggle)", True],
               "Chain": ["j", SelectType.line_join,
                         "Create a chain joint between two blocks (j toggle)", True],
-              "Springy Rope": ["j", SelectType.line_join, "To Fix (j toggle)", True],
               "Weld Joint": ["j", SelectType.straight_join, "Weld two blocks together (j toggle)", True],
               "Wheel Joint": ["j", SelectType.circle, "Create a wheel type joint (j toggle)", True],
               "Rotation Joint": ["j", SelectType.rotation_select,

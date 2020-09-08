@@ -80,8 +80,7 @@ def add(event, x, y, flags, param):
         elif cur_key[1:] == SelectType.line_join.value:
             if msg.message == "Electric":
                 draw, phys = lightning(draw, phys, event, x_new, y_new, cur_key)
-            elif msg.message == "Springy Rope":
-                draw, phys = chainish(draw, phys, event, x_new, y_new, cur_key)
+
         elif cur_key[1:] == SelectType.line_join2.value:
             if msg.message == "Chain":
                 draw, phys = chain(draw, phys, event, x_new, y_new, cur_key)

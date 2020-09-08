@@ -314,7 +314,7 @@ def action_key_press(key, cur_key_type, cur_key, draw, phys, msg, timer, board, 
                 options = {"Merge Blocks": SelectType.select,
                            "Distance Joint": SelectType.straight_join, "Rope Joint": SelectType.straight_join,
                            "Prismatic Joint": SelectType.straight_join,
-                           "Electric": SelectType.line_join, "Springy Rope": SelectType.line_join,
+                           "Electric": SelectType.line_join,
                            "Chain": SelectType.line_join2,
                            "Weld Joint": SelectType.straight_join, "Wheel Joint": SelectType.circle,
                            "Rotation Joint": SelectType.rotation_select, "Pulley": SelectType.d_straight_join}
